@@ -1,0 +1,20 @@
+{
+    "034": {
+        "instance": {
+            "034_53021": {
+                "query": "Read the following passage, and follow the given steps.",
+                "instruction": {
+                    "1": "Read through the given text and translate it to German.",
+                    "2": "Summarize the text you have translated it step#1."
+                },
+                "context": {
+                    "1_0": "###Text\nClick or double-click the Edge app icon, which resembles either a white \"e\" on a blue background or a dark-blue \"e\". This icon is in the top-right corner of the Edge window. A drop-down menu will appear. It's at the bottom of the pop-out menu. This option is below the \"Clear browsing data\" heading about halfway down the Settings menu. This is the option that will clear your Edge browser's cookies; you can uncheck every other box on this menu if you like. It's below the different types of data. Doing so will clear your browser's cookies."
+                },
+                "answers": [
+                    "Klicke auf das Icon der Edge App oder mache einen Doppelklick darauf. Das Icon zeigt entweder ein weißes \"e\" auf dunkelblauem Hintergrund oder ein dunkelblaues \"e\". Ein Dropdown-Menü wird eingeblendet.  Diese Option findest du unter der Überschrift \"Browser-Daten löschen\" etwa in der Mitte der Einstellungen. Dies ist die Option, die die Cookies deines Edge Browsers löscht. Wenn du möchtest, kannst du alle anderen Häkchen in diesem Menü entfernen. Dies löscht die Cookies in deinem Browser.",
+                    "Öffne Microsoft Edge. Klicke rechts oben in Edge auf ⋯. Klicke unten in diesem Menü auf Einstellungen. Klicke auf Zu löschende Daten auswählen. Vergewissere dich, dass sich bei \"Cookies und gespeicherte Webseiten-Daten\" ein Häkchen befindet. Klicke unter den verschiedenen Datentypen auf Löschen."
+                ]
+            }
+        }
+    }
+}
