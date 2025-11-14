@@ -7,11 +7,71 @@ from evaluate.templates import create_prompt_with_tulu_chat_format
 import argparse
 import os
 
+
+from pymongo import MongoClient
+from datetime import datetime
+
+# Conexão MongoDB (exemplo para teste, substitua pela uri real)
+MONGO_URI = os.getenv("MONGODB_URI")
+
+# Cria conexão global (melhor que abrir várias conexões dentro da função)
+mongo_client = MongoClient(MONGO_URI)
+db = mongo_client["experiments_db"]
+collection = db["experiment_results"]
+
+
+def insert_experiment_results(
+    date: datetime,
+    model_name: str,
+    uuid: str,
+    prompt: str,
+    batch_size: int,
+    params: dict | str,
+    consumed_tokens: int,
+    generation_time: float
+):
+    """
+    Insere um documento na coleção 'experiment_results' contendo
+    o estado do experimento em um dado momento.
+    """
+
+    # Monta o documento a ser inserido
+    doc = {
+        "date": date,
+        "model_name": model_name,
+        "uuid": uuid,
+        "prompt": prompt,
+        "batch_size": batch_size,
+        "params": params,
+        "consumed_tokens": consumed_tokens,
+        "generation_time": generation_time
+    }
+
+    # Insere no MongoDB
+    result = collection.insert_one(doc)
+
+    return result.inserted_id
+
+
+
 parser = argparse.ArgumentParser(description="Run the script with a specified model and batch size.")
 parser.add_argument("--model_name", type=str, required=True, help="Name of the model to load")
 parser.add_argument("--batch_size", type=int, required=True, help="Batch size for generation")
 parser.add_argument("--output_dir", type=str, required=True, help="Directory to save output results")
 parser.add_argument("--save_every", type=int, default=10, help="Number of generations before saving to CSV")
+
+"""
+    Experiment data to be saved in the following structure:
+    - date (time)
+    - model_name (str)
+    - uuid (str)
+    - prompt (str)
+    - batch_size (int)
+    - params (str) -- possivelmente args? 
+    - consumed_tokens (int)
+    - generation_time (float)
+"""
+
 
 args = parser.parse_args()
 
@@ -128,6 +188,18 @@ for k, v in list(data.items()):
     _, s1, s2, s3 = CoT[CoT["tuid"] == int(k)].values[0]
     cot = data[k]["sample"]
 
+    # ===== INSERÇÃO ANTES DA ETAPA 1 =====
+    insert_experiment_results(
+        date=datetime.now(),
+        model_name=args.model_name,
+        uuid=str(k),
+        prompt=cot,
+        batch_size=args.batch_size,
+        params=vars(args),
+        consumed_tokens=0,            # ainda não calculado neste ponto
+        generation_time=0.0           # ainda não ocorreu geração
+    )
+
     # ---------- Etapa 1 ----------
     def build_input_s1(uid, instance):
         return create_prompt_with_tulu_chat_format([{
@@ -147,6 +219,18 @@ for k, v in list(data.items()):
 
     torch.cuda.empty_cache()
 
+    # ===== INSERÇÃO ANTES DA ETAPA 2 =====
+    insert_experiment_results(
+        date=datetime.now(),
+        model_name=args.model_name,
+        uuid=str(k),
+        prompt="Etapa 1 completa",
+        batch_size=args.batch_size,
+        params=vars(args),
+        consumed_tokens=0,             # pode colocar contagem real se tiver
+        generation_time=0.0            # ou tempo real se disponível
+    )
+    
     # ---------- Etapa 2 ----------
     def build_input_s2(uid, instance):
         idx = list(data[k]["instance"].keys()).index(uid)
