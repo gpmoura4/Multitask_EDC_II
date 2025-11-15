@@ -1,12 +1,13 @@
+from __future__ import annotations
+
 import json
 import torch
 import pandas as pd
 from src import reconstruct_instruction
 from evaluate.utils import load_hf_lm_and_tokenizer, generate_completions
-from evaluate.templates import create_prompt_with_tulu_chat_format 
+from evaluate.templates import create_prompt_with_tulu_chat_format
 import argparse
 import os
-
 
 from pymongo import MongoClient
 from datetime import datetime
@@ -21,14 +22,14 @@ collection = db["experiment_results"]
 
 
 def insert_experiment_results(
-    date: datetime,
-    model_name: str,
-    uuid: str,
-    prompt: str,
-    batch_size: int,
-    params: dict | str,
-    consumed_tokens: int,
-    generation_time: float
+        date: datetime,
+        model_name: str,
+        uuid: str,
+        prompt: str,
+        batch_size: int,
+        params: dict | str,
+        consumed_tokens: int,
+        generation_time: float
 ):
     """
     Insere um documento na coleção 'experiment_results' contendo
@@ -78,20 +79,19 @@ def finalize_experiment(experiment_id):
     )
 
 
-
 def create_experiment_record(
-    inference_type: str,
-    experiment_name: str,
-    batch_size: int,
-    save_every: int,
-    model_name: str,
-    llm_params: dict,
-    id: str | None = None,
+        inference_type: str,
+        experiment_name: str,
+        batch_size: int,
+        save_every: int,
+        model_name: str,
+        llm_params: dict,
+        id: str | None = None,
 ):
     """
     Cria o documento inicial do experimento.
     Este é chamado APENAS antes do loop principal.
-    
+
     Se o parâmetro opcional 'id' for fornecido, a função busca um experimento
     existente no banco de dados usando esse 'id' como chave de identificação
     e retorna o _id do documento encontrado.
@@ -116,9 +116,9 @@ def create_experiment_record(
         "model_name": model_name,
         "llm_params": llm_params,
         "initial_time": initial_time,
-        "final_time": None,                # será preenchido no final
-        "total_time": None,                # será preenchido no final
-        "experimentIsOver": False          # muda para True ao fim do experimento
+        "final_time": None,  # será preenchido no final
+        "total_time": None,  # será preenchido no final
+        "experimentIsOver": False  # muda para True ao fim do experimento
     }
 
     # Se 'id' foi fornecido, incluí-lo no documento
@@ -126,8 +126,7 @@ def create_experiment_record(
         doc["id"] = id
 
     result = collection.insert_one(doc)
-    return result.inserted_id    # retornamos o ID para update posterior
-
+    return result.inserted_id  # retornamos o ID para update posterior
 
 
 parser = argparse.ArgumentParser(description="Run the script with a specified model and batch size.")
@@ -136,14 +135,16 @@ parser.add_argument("--batch_size", type=int, required=True, help="Batch size fo
 parser.add_argument("--output_dir", type=str, required=True, help="Directory to save output results")
 parser.add_argument("--save_every", type=int, default=10, help="Number of generations before saving to CSV")
 
-
 args = parser.parse_args()
 
 # ------------------------------
 # Criação de diretórios
 # ------------------------------
-# Caminho base: {output_dir}/{model_name}/STI
-base_output_path = os.path.join(args.output_dir, args.model_name, "STI")
+# Sanear o nome do modelo para uso em paths (evitar "/")
+safe_model_name = args.model_name.replace("/", "_").replace("\\", "_")
+
+# Caminho base: {output_dir}/{safe_model_name}/STI
+base_output_path = os.path.join(args.output_dir, safe_model_name, "STI")
 os.makedirs(base_output_path, exist_ok=True)
 
 # ------------------------------
@@ -159,11 +160,16 @@ model, tokenizer = load_hf_lm_and_tokenizer(
 
 CoT = pd.read_excel("data/cot_breakdown.xlsx")
 
+
 # -------------------------------
 # Função auxiliar: gera e salva só o que falta (agora com salvamento incremental)
 # -------------------------------
 def generate_missing_instances(stage_name, k_output_dir, k, input_builder_fn):
-    csv_path = os.path.join(k_output_dir, f"free-form-{args.model_name}-STI-{k}-{stage_name}.csv")
+    # usar safe_model_name para evitar separar diretórios pelo '/'
+    csv_path = os.path.join(
+        k_output_dir,
+        f"free-form-{safe_model_name}-STI-{k}-{stage_name}.csv"
+    )
 
     # Ler progresso existente
     done_uids = set()
@@ -189,7 +195,8 @@ def generate_missing_instances(stage_name, k_output_dir, k, input_builder_fn):
         for i in range(0, len(pending), args.batch_size):
             batch = pending[i:i + args.batch_size]
             uids_batch = [uid for uid, _ in batch]
-            inputs = [input_builder_fn(uid, instance) for uid, instance in batch if input_builder_fn(uid, instance) is not None]
+            inputs = [input_builder_fn(uid, instance) for uid, instance in batch if
+                      input_builder_fn(uid, instance) is not None]
 
             if not inputs:
                 continue
@@ -238,7 +245,7 @@ def generate_missing_instances(stage_name, k_output_dir, k, input_builder_fn):
                         Ou seja, precisamos salvar as respostas de acordo com a quantidade de 
                         batch_size. Se batch_size = 4, então adicionamos 4 respostas geradas para aquela instância,
                         e assim sucessivamente até completar todas as instâncias (que são 200 no total) para cada task.
-                        
+
                         Uma coisa importante de se observar é que o código puxa respostas em 3 etapas (s1, s2, s3).
 
                             - Isso é determinado pelas chamadas das funções:
@@ -317,7 +324,6 @@ def generate_missing_instances(stage_name, k_output_dir, k, input_builder_fn):
 
 print("starting evaluation")
 
-
 experiment_id = create_experiment_record(
     inference_type="STI",
     experiment_name="STI_Experiment_v1",
@@ -377,28 +383,27 @@ for k, v in list(data.items()):
             - top_p=1.0
     """
 
-    
 
     # ---------- Etapa 1 ----------
     def build_input_s1(uid, instance):
         return create_prompt_with_tulu_chat_format([{
             "role": "user",
             "content": (
-                "### Example:\n\n"
-                + "### Instruction: " + cot
-                + "\n\n### Task:\n\n"
-                + "### Instruction: " + reconstruct_instruction(instance, 1, False)
-                + "\n\n### Answer:\n\n"
+                    "### Example:\n\n"
+                    + "### Instruction: " + cot
+                    + "\n\n### Task:\n\n"
+                    + "### Instruction: " + reconstruct_instruction(instance, 1, False)
+                    + "\n\n### Answer:\n\n"
             )
         }])
-    
 
-    
+
     generated_texts_s1 = generate_missing_instances("s1", k_output_dir, k, build_input_s1)
     if generated_texts_s1 is None:
         continue
 
     torch.cuda.empty_cache()
+
 
     # ---------- Etapa 2 ----------
     def build_input_s2(uid, instance):
@@ -409,22 +414,24 @@ for k, v in list(data.items()):
         query1 = reconstruct_instruction(instance, 1, False)
         query2 = reconstruct_instruction(instance, 2, False)
         content = (
-            "### Example:\n\n"
-            + "### (1) Instruction: " + s1
-            + "\n\n### (2) Instruction: " + s2
-            + "\n\n### Task:\n\n"
-            + "### (1) Instruction: " + query1
-            + "\n\n### Answer:\n\n" + str(gen1)
-            + "\n\n### (2) Instruction: " + query2
-            + "\n\n### Answer:"
+                "### Example:\n\n"
+                + "### (1) Instruction: " + s1
+                + "\n\n### (2) Instruction: " + s2
+                + "\n\n### Task:\n\n"
+                + "### (1) Instruction: " + query1
+                + "\n\n### Answer:\n\n" + str(gen1)
+                + "\n\n### (2) Instruction: " + query2
+                + "\n\n### Answer:"
         )
         return create_prompt_with_tulu_chat_format([{"role": "user", "content": content}])
+
 
     generated_texts_s2 = generate_missing_instances("s2", k_output_dir, k, build_input_s2)
     if generated_texts_s2 is None:
         continue
 
     torch.cuda.empty_cache()
+
 
     # ---------- Etapa 3 ----------
     def build_input_s3(uid, instance):
@@ -444,23 +451,23 @@ for k, v in list(data.items()):
         query3 = reconstruct_instruction(instance, 3, False)
 
         content = (
-            "### Example:\n\n"
-            + "### (1) Instruction: " + s1
-            + "\n\n### (2) Instruction: " + s2
-            + "\n\n### (3) Instruction: " + s3
-            + "\n\n### Task:\n\n"
-            + "### (1) Instruction: " + query1
-            + "\n\n### Answer:\n\n" + str(gen1)
-            + "\n\n### (2) Instruction: " + query2
-            + "\n\n### Answer:\n\n" + str(gen2)
-            + "\n\n### (3) Instruction: " + query3
-            + "\n\n### Answer:"
+                "### Example:\n\n"
+                + "### (1) Instruction: " + s1
+                + "\n\n### (2) Instruction: " + s2
+                + "\n\n### (3) Instruction: " + s3
+                + "\n\n### Task:\n\n"
+                + "### (1) Instruction: " + query1
+                + "\n\n### Answer:\n\n" + str(gen1)
+                + "\n\n### (2) Instruction: " + query2
+                + "\n\n### Answer:\n\n" + str(gen2)
+                + "\n\n### (3) Instruction: " + query3
+                + "\n\n### Answer:"
         )
         return create_prompt_with_tulu_chat_format([{"role": "user", "content": content}])
 
+
     generate_missing_instances("s3", k_output_dir, k, build_input_s3)
     torch.cuda.empty_cache()
-
 
 finalize_experiment(experiment_id)
 

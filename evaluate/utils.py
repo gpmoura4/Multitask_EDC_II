@@ -166,7 +166,7 @@ def load_hf_lm_and_tokenizer(
         return remote, None
 
     # 🔹 Caso 2 – Modelos LLaMA ou Groq → Groq
-    if ("llama" in name_lower) or ("groq" in name_lower):
+    if ("llama" in name_lower) or ("groq" in name_lower) or ("openai/" in name_lower):
         if not GROQ_API_KEY:
             raise ValueError("❌ Variável de ambiente GROQ_API_KEY não encontrada.")
 

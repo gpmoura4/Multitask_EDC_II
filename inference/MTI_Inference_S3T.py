@@ -69,5 +69,4 @@ for k,v in list(data.items()):
     
     del generated_texts
     torch.cuda.empty_cache()
-    break
 
