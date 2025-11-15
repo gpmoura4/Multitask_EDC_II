@@ -6,6 +6,8 @@ from evaluate.utils import load_hf_lm_and_tokenizer, generate_completions
 from evaluate.templates import create_prompt_with_tulu_chat_format 
 import argparse
 import os
+from bson import ObjectId
+from datetime import datetime
 
 
 from pymongo import MongoClient
@@ -90,21 +92,22 @@ def create_experiment_record(
 ):
     """
     Cria o documento inicial do experimento.
-    Este é chamado APENAS antes do loop principal.
-    
-    Se o parâmetro opcional 'id' for fornecido, a função busca um experimento
-    existente no banco de dados usando esse 'id' como chave de identificação
-    e retorna o _id do documento encontrado.
     """
 
-    # Se 'id' foi fornecido, buscar experimento existente
+    # Se 'id' foi fornecido, tentar buscar experimento existente
     if id is not None:
-        existing_doc = collection.find_one({"id": id})
+        try:
+            object_id = ObjectId(id)   # converte string → ObjectId
+            existing_doc = collection.find_one({"_id": object_id})
+        except Exception:
+            print(f"❌ ID '{id}' não é um ObjectId válido. Criando novo experimento.")
+            existing_doc = None
+
         if existing_doc:
-            print(f"⚠️  Experimento encontrado com id='{id}'. Retornando _id do documento existente.")
+            print(f"⚠️  Experimento encontrado com _id='{id}'. Retornando documento existente.")
             return existing_doc["_id"]
         else:
-            print(f"⚠️  Nenhum experimento encontrado com id='{id}'. Criando novo experimento.")
+            print(f"⚠️  Nenhum experimento encontrado com _id='{id}'. Criando novo experimento.")
 
     initial_time = datetime.now()
 
@@ -116,17 +119,13 @@ def create_experiment_record(
         "model_name": model_name,
         "llm_params": llm_params,
         "initial_time": initial_time,
-        "final_time": None,                # será preenchido no final
-        "total_time": None,                # será preenchido no final
-        "experimentIsOver": False          # muda para True ao fim do experimento
+        "final_time": None,
+        "total_time": None,
+        "experimentIsOver": False
     }
 
-    # Se 'id' foi fornecido, incluí-lo no documento
-    if id is not None:
-        doc["id"] = id
-
     result = collection.insert_one(doc)
-    return result.inserted_id    # retornamos o ID para update posterior
+    return result.inserted_id
 
 
 
