@@ -5,6 +5,8 @@ from src import reconstruct_instruction
 from evaluate.utils import load_hf_lm_and_tokenizer, generate_completions
 from evaluate.templates import create_prompt_with_tulu_chat_format 
 import argparse
+import os  # added to handle paths and directories
+
 parser = argparse.ArgumentParser(description="Run the script with a specified model and batch size.")
 parser.add_argument("--model_name", type=str, required=True, help="Name of the model to load")
 parser.add_argument("--batch_size", type=int, required=True, help="Batch size for generation")
@@ -22,6 +24,12 @@ model, tokenizer = load_hf_lm_and_tokenizer(
 CoT = pd.read_excel("data/cot_breakdown.xlsx")
 
 print("starting evaluation")
+
+# sanitize model_name for filesystem use and prepare output directory
+safe_model_name = args.model_name.replace("/", "_").replace("\\", "_")
+output_dir = os.path.join("data", f"free-form-{safe_model_name}")
+os.makedirs(output_dir, exist_ok=True)
+
 for k,v in list(data.items()):
     print(k)
     _,s1,s2,s3 = CoT[CoT["tuid"]==int(k)].values[0]
@@ -50,12 +58,16 @@ for k,v in list(data.items()):
                             temperature=0.7,
                             top_p=1.0
                         )
+
+    # build a safe output path under the ensured directory
+    output_path = os.path.join(output_dir, f"MTI-{k}.csv")
     pd.DataFrame({
-        "uid":list(data[k]["instance"].keys()),
-        "generation":generated_texts,
-        "generation_time":generation_time
-    }).to_csv(f"data/free-form-{args.model_name}-MTI-{k}.csv")
+        "uid": list(data[k]["instance"].keys()),
+        "generation": generated_texts,
+        "generation_time": generation_time
+    }).to_csv(output_path, index=False)
     
     del generated_texts
     torch.cuda.empty_cache()
+    break
 
