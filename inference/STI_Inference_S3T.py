@@ -53,24 +53,68 @@ def insert_experiment_results(
     return result.inserted_id
 
 
+def finalize_experiment(experiment_id):
+    """
+    Atualiza o documento inicial de um experimento para marcar como concluído.
+    Preenche também o final_time e total_time.
+    """
+
+    final_time = datetime.now()
+
+    # Buscar o documento original para calcular total_time
+    doc = collection.find_one({"_id": experiment_id})
+    initial_time = doc["initial_time"]
+    total_time = (final_time - initial_time).total_seconds()
+
+    update_fields = {
+        "experimentIsOver": True,
+        "final_time": final_time,
+        "total_time": total_time
+    }
+
+    collection.update_one(
+        {"_id": experiment_id},
+        {"$set": update_fields}
+    )
+
+
+
+def create_experiment_record(
+    inference_type: str,
+    batch_size: int,
+    save_every: int,
+    model_name: str,
+    llm_params: dict,
+):
+    """
+    Cria o documento inicial do experimento.
+    Este é chamado APENAS antes do loop principal.
+    """
+
+    initial_time = datetime.now()
+
+    doc = {
+        "inference_type": inference_type,
+        "batch_size": batch_size,
+        "save_every": save_every,
+        "model_name": model_name,
+        "llm_params": llm_params,
+        "initial_time": initial_time,
+        "final_time": None,                # será preenchido no final
+        "total_time": None,                # será preenchido no final
+        "experimentIsOver": False          # muda para True ao fim do experimento
+    }
+
+    result = collection.insert_one(doc)
+    return result.inserted_id    # retornamos o ID para update posterior
+
+
 
 parser = argparse.ArgumentParser(description="Run the script with a specified model and batch size.")
 parser.add_argument("--model_name", type=str, required=True, help="Name of the model to load")
 parser.add_argument("--batch_size", type=int, required=True, help="Batch size for generation")
 parser.add_argument("--output_dir", type=str, required=True, help="Directory to save output results")
 parser.add_argument("--save_every", type=int, default=10, help="Number of generations before saving to CSV")
-
-"""
-    Experiment data to be saved in the following structure:
-    - date (time)
-    - model_name (str)
-    - uuid (str)
-    - prompt (str)
-    - batch_size (int)
-    - params (str) -- possivelmente args? 
-    - consumed_tokens (int)
-    - generation_time (float)
-"""
 
 
 args = parser.parse_args()
@@ -179,6 +223,43 @@ print("starting evaluation")
 # -------------------------------
 # Loop principal
 # -------------------------------
+
+# parâmetros do modelo usados na geração
+# llm_params = {
+#     "tokenizer": str(tokenizer.__class__.__name__),
+#     "model_name": args.model_name,
+#     "stop_id_sequences": None,
+#     "add_special_tokens": True,
+#     "disable_tqdm": False,
+#     "max_new_tokens": 2048,
+#     "min_new_tokens": 32,
+#     "do_sample": True,
+#     "temperature": 0.7,
+#     "top_p": 1.0
+# }
+
+experiment_id = create_experiment_record(
+    inference_type="STI",
+    batch_size=args.batch_size,
+    save_every=args.save_every,
+    model_name=args.model_name,
+    llm_params={
+        "tokenizer": str(tokenizer.__class__.__name__),
+        "model_name": args.model_name,
+        "stop_id_sequences": None,
+        "add_special_tokens": True,
+        "disable_tqdm": False,
+        "max_new_tokens": 2048,
+        "min_new_tokens": 32,
+        "do_sample": True,
+        "temperature": 0.7,
+        "top_p": 1.0
+    }
+)
+
+# --- sua etapa de geração aqui ---
+
+
 for k, v in list(data.items()):
     print(f"\n=== Processando tuid {k} ===")
 
@@ -225,6 +306,8 @@ for k, v in list(data.items()):
             - top_p=1.0
     """
 
+    
+
     # ---------- Etapa 1 ----------
     def build_input_s1(uid, instance):
         return create_prompt_with_tulu_chat_format([{
@@ -238,6 +321,10 @@ for k, v in list(data.items()):
             )
         }])
     
+    # 
+
+
+
     """
        Gravar na collection 'answer_results' o resultado da geração.
        Deve-se gravar um documento para cada instance dentro de cada task gerada.
@@ -278,6 +365,7 @@ for k, v in list(data.items()):
                    
     """
 
+    
     generated_texts_s1 = generate_missing_instances("s1", k_output_dir, k, build_input_s1)
     if generated_texts_s1 is None:
         continue
@@ -357,4 +445,7 @@ for k, v in list(data.items()):
     generate_missing_instances("s3", k_output_dir, k, build_input_s3)
     torch.cuda.empty_cache()
 
+
+finalize_experiment(experiment_id)
+print("\n✅ Experimento finalizado e registrado no MongoDB!")
 print("\n✅ Processo concluído com sucesso!")
