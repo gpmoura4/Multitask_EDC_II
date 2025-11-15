@@ -200,6 +200,30 @@ for k, v in list(data.items()):
         generation_time=0.0           # ainda não ocorreu geração
     )
 
+    """
+       Gravar na collection 'experiment_results' o estado inicial do experimento
+       os seguintes campos:
+
+        - inference_type (str) -- "STI" 
+        - batch_size (int) (args.batch_size)
+        - save_every (int) (args.save_every)
+        - initial_time (time) -- tempo de início do experimento
+        - final_time (time) -- tempo de término do experimento
+        - total_time (float) -- tempo total gasto no experimento        
+        - type (str) -- "generate_response", "ground_truth", "llm_judge"
+        - llm_params (dict) -- parâmetros usados na geração
+            - tokenizer (str)
+            - model_name (str) (args.model_name)
+            - stop_id_sequences=None,
+            - add_special_tokens=True,
+            - disable_tqdm=False,
+            - max_new_tokens=2048,
+            - min_new_tokens=32,
+            - do_sample=True,
+            - temperature=0.7,
+            - top_p=1.0
+    """
+
     # ---------- Etapa 1 ----------
     def build_input_s1(uid, instance):
         return create_prompt_with_tulu_chat_format([{
