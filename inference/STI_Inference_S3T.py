@@ -200,6 +200,31 @@ for k, v in list(data.items()):
         generation_time=0.0           # ainda não ocorreu geração
     )
 
+    """
+       # Passo 1 
+       Gravar na collection 'experiment_results' o estado inicial do experimento
+       os seguintes campos:
+
+        - inference_type (str) -- "STI" or "MTI"
+        - batch_size (int) (args.batch_size)
+        - save_every (int) (args.save_every)
+        - initial_time (time) -- tempo de início do experimento
+        - final_time (time) -- tempo de término do experimento
+        - total_time (float) -- tempo total gasto no experimento        
+        - type (str) -- "generate_response", "ground_truth", "llm_judge"
+        - llm_params (dict) -- parâmetros usados na geração
+            - tokenizer (str)
+            - model_name (str) (args.model_name)
+            - stop_id_sequences=None,
+            - add_special_tokens=True,
+            - disable_tqdm=False,
+            - max_new_tokens=2048,
+            - min_new_tokens=32,
+            - do_sample=True,
+            - temperature=0.7,
+            - top_p=1.0
+    """
+
     # ---------- Etapa 1 ----------
     def build_input_s1(uid, instance):
         return create_prompt_with_tulu_chat_format([{
@@ -212,6 +237,46 @@ for k, v in list(data.items()):
                 + "\n\n### Answer:\n\n"
             )
         }])
+    
+    """
+       Gravar na collection 'answer_results' o resultado da geração.
+       Deve-se gravar um documento para cada instance dentro de cada task gerada.
+       Ex: Temos 12 tasks, cada uma com 200 instâncias.
+        Logo, teremos 12 * 200 = 2400 documentos na collection 'answer_results'.
+        Cada task tem um task_id, e para cada task_id, temos 200 instance_id.
+
+        - id (ObjectId)
+        - experiment_id (ObjectId) -- Esse id deve ser igual ao doc gerado no # Passo 1, fazendo um relacionamento entre eles
+        - task_id (str) -- str(k)
+        - instance_id (str) -- data[k]["instance"][]
+            - A estrutura de data é: data['034']['instance'],
+                - Logo, dentro data['034']['instance'] temos: {'034_53021': {...}, '034_52433': {...}, ...}
+                - Nesse caso, o instance_id do primeiro doc seria '034_53021', do segundo '034_52433', etc.
+                - Considere que o instance_id é a chave dentro do dicionário data[k]["instance"]  
+                - E deve-se armazenar de maneira correta qual a instance_id para aquela task_id específica.
+
+        - prompt (juncao da query, instruction, context)
+            - Deve ser o resultado da func: 
+                -     def build_input_s1(uid, instance):
+                        return create_prompt_with_tulu_chat_format([{
+                            "role": "user",
+                            "content": (
+                                "### Example:\n\n"
+                                + "### Instruction: " + cot
+                                + "\n\n### Task:\n\n"
+                                + "### Instruction: " + reconstruct_instruction(instance, 1, False)
+                                + "\n\n### Answer:\n\n"
+                            )
+                        }])
+        - llm_answer (str) -- texto gerado pelo modelo
+           - Se o inference_type for igual a "STI"
+                Lista de respostas, uma para cada etapa (s1, s2, s3)
+           - Se o inference_type for igual a "MTI"
+                Resposta única
+        - generation_time (float) -- tempo gasto em segundos na geração daquela instância específica
+        - consumed_tokens (int) -- número de tokens consumidos na geração daquela instância específica
+                   
+    """
 
     generated_texts_s1 = generate_missing_instances("s1", k_output_dir, k, build_input_s1)
     if generated_texts_s1 is None:
