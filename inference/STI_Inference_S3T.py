@@ -205,7 +205,7 @@ for k, v in list(data.items()):
        Gravar na collection 'experiment_results' o estado inicial do experimento
        os seguintes campos:
 
-        - inference_type (str) -- "STI" 
+        - inference_type (str) -- "STI" or "MTI"
         - batch_size (int) (args.batch_size)
         - save_every (int) (args.save_every)
         - initial_time (time) -- tempo de início do experimento
@@ -240,8 +240,10 @@ for k, v in list(data.items()):
     
     """
        Gravar na collection 'answer_results' o resultado da geração.
-       Deve-se gravar um documento para cada prompt da etapa. 
-
+       Deve-se gravar um documento para cada instance dentro de cada task gerada.
+       Ex: Temos 12 tasks, cada uma com 200 instâncias.
+        Logo, teremos 12 * 200 = 2400 documentos na collection 'answer_results'.
+        Cada task tem um task_id, e para cada task_id, temos 200 instance_id.
 
         - id (ObjectId)
         - experiment_id (ObjectId) -- Esse id deve ser igual ao doc gerado no # Passo 1, fazendo um relacionamento entre eles
@@ -249,12 +251,31 @@ for k, v in list(data.items()):
         - instance_id (str) -- data[k]["instance"][]
             - A estrutura de data é: data['034']['instance'],
                 - Logo, dentro data['034']['instance'] temos: {'034_53021': {...}, '034_52433': {...}, ...}
-                - Nesse caso, o instance_id seria '034_53021', '034_52433', etc.
+                - Nesse caso, o instance_id do primeiro doc seria '034_53021', do segundo '034_52433', etc.
                 - Considere que o instance_id é a chave dentro do dicionário data[k]["instance"]  
                 - E deve-se armazenar de maneira correta qual a instance_id para aquela task_id específica.
 
-        - prompt 
-        
+        - prompt (juncao da query, instruction, context)
+            - Deve ser o resultado da func: 
+                -     def build_input_s1(uid, instance):
+                        return create_prompt_with_tulu_chat_format([{
+                            "role": "user",
+                            "content": (
+                                "### Example:\n\n"
+                                + "### Instruction: " + cot
+                                + "\n\n### Task:\n\n"
+                                + "### Instruction: " + reconstruct_instruction(instance, 1, False)
+                                + "\n\n### Answer:\n\n"
+                            )
+                        }])
+        - llm_answer (str) -- texto gerado pelo modelo
+           - Se o inference_type for igual a "STI"
+                Lista de respostas, uma para cada etapa (s1, s2, s3)
+           - Se o inference_type for igual a "MTI"
+                Resposta única
+        - generation_time (float) -- tempo gasto em segundos na geração daquela instância específica
+        - consumed_tokens (int) -- número de tokens consumidos na geração daquela instância específica
+                   
     """
 
     generated_texts_s1 = generate_missing_instances("s1", k_output_dir, k, build_input_s1)
