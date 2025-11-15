@@ -201,6 +201,7 @@ for k, v in list(data.items()):
     )
 
     """
+       # Passo 1 
        Gravar na collection 'experiment_results' o estado inicial do experimento
        os seguintes campos:
 
@@ -236,6 +237,25 @@ for k, v in list(data.items()):
                 + "\n\n### Answer:\n\n"
             )
         }])
+    
+    """
+       Gravar na collection 'answer_results' o resultado da geração.
+       Deve-se gravar um documento para cada prompt da etapa. 
+
+
+        - id (ObjectId)
+        - experiment_id (ObjectId) -- Esse id deve ser igual ao doc gerado no # Passo 1, fazendo um relacionamento entre eles
+        - task_id (str) -- str(k)
+        - instance_id (str) -- data[k]["instance"][]
+            - A estrutura de data é: data['034']['instance'],
+                - Logo, dentro data['034']['instance'] temos: {'034_53021': {...}, '034_52433': {...}, ...}
+                - Nesse caso, o instance_id seria '034_53021', '034_52433', etc.
+                - Considere que o instance_id é a chave dentro do dicionário data[k]["instance"]  
+                - E deve-se armazenar de maneira correta qual a instance_id para aquela task_id específica.
+
+        - prompt 
+        
+    """
 
     generated_texts_s1 = generate_missing_instances("s1", k_output_dir, k, build_input_s1)
     if generated_texts_s1 is None:
