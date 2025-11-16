@@ -194,11 +194,21 @@ def generate_missing_instances(stage_name, k_output_dir, k, input_builder_fn):
                 continue
 
             """
-            # Nao criar experimento novo
-            # Das respostas -> continuar da onde parou
 
-            # Filtrar pelo experiment_id e com experimentIsOver = false 
-            # 
+            # Regras:
+                # No processamento das respostas -> continuar da onde parou
+                   - Contexto dos dados: 
+                        - Considere que temos uma lista de tarefas identificadas por 'k' (task_id).
+                        - Cada tarefa 'k' possui várias instâncias identificadas por  data[k]["instance"]['chave_da_instancia'].
+                        - Cada instancia possui 200 sub-tarefas para serem processadas. 
+                        - Considere que essas tarefas podem ser processadas corretamente ou dar algum problema no meio do processamento
+                        - Se der algum problema, como por exemplo a API da OpenAI cair, ou qualquer outro erro inesperado,
+                          o código deve ser capaz de retomar o processamento exatamente de onde parou, sem perder dados já processados.
+                        - Ou seja, é necessário implementar um mecanismo de checkpointing, onde o progresso é salvo periodicamente.
+                        - E quando executamos o código novamente, ele verifica quais instâncias já foram processadas e continua a partir da próxima instância pendente.
+                        - Considere que caso haja algum erro como os citados anteriormente, é necessário que o progresso seja salvo e 
+                            seja gerado um txt com o _id do experimento e a task_id (k) onde o erro ocorreu.
+
 
             Gravar na collection 'answer_results' o resultado da geração.
             Deve-se gravar um documento para cada instance dentro de cada task gerada.
