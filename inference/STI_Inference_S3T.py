@@ -206,6 +206,7 @@ parser.add_argument("--model_name", type=str, required=True, help="Name of the m
 parser.add_argument("--batch_size", type=int, required=True, help="Batch size for generation")
 parser.add_argument("--output_dir", type=str, required=True, help="Directory to save output results")
 parser.add_argument("--save_every", type=int, default=10, help="Number of generations before saving to CSV")
+parser.add_argument("--is_test", action="store_true", help="Run in test mode (process only one task)")
 
 
 args = parser.parse_args()
@@ -388,7 +389,19 @@ experiment_id = create_experiment_record(
 # Loop principal
 # -------------------------------
 
-for k, v in list(data.items()):
+# Determinar quais tasks processar baseado no modo de teste
+if args.is_test:
+    # Modo teste: processar apenas a primeira task
+    tasks_to_process = list(data.items())[:1]
+    print("\n🧪 MODO DE TESTE ATIVADO: Processando apenas a primeira task")
+    print(f"Task selecionada: {tasks_to_process[0][0]}")
+    print(f"Número de instâncias: {len(tasks_to_process[0][1]['instance'])}\n")
+else:
+    # Modo normal: processar todas as tasks
+    tasks_to_process = list(data.items())
+    print(f"\n📊 MODO COMPLETO: Processando todas as {len(tasks_to_process)} tasks\n")
+
+for k, v in tasks_to_process:
     print(f"\n=== Processando tuid {k} ===")
 
     k_output_dir = os.path.join(base_output_path, str(k))
