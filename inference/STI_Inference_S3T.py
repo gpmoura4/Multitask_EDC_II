@@ -112,7 +112,8 @@ def create_or_update_answer_document(experiment_id, task_id, instance_id, stage_
         # Documento existe - fazer update adicionando a nova stage
         update_data = {
             f"llm_answer.{stage_name}": llm_answer,
-            f"generation_time": existing_doc.get("generation_time", 0) + generation_time
+            f"generation_time": existing_doc.get("generation_time", 0) + generation_time,
+            "prompt": prompt  # Atualizar prompt para o prompt atual (final) da etapa
         }
         
         # Atualizar consumed_tokens se houver
@@ -200,7 +201,7 @@ def create_experiment_record(
     return result.inserted_id
 
 
-# python inference/STI_Inference_S3T.py --model_name gpt-3.5-turbo-0125 --batch_size 20 --output_dir ./output --is_test
+# python inference/STI_Inference_S3T.py --model_name gpt-3.5-turbo-0125 --batch_size 20 --output_dir ./output --is_test --test_task_id "034" --test_num_instances 10
 parser = argparse.ArgumentParser(description="Run the script with a specified model and batch size.")
 parser.add_argument("--model_name", type=str, required=True, help="Name of the model to load")
 parser.add_argument("--batch_size", type=int, required=True, help="Batch size for generation")
@@ -295,6 +296,9 @@ def generate_missing_instances(stage_name, k_output_dir, k, input_builder_fn, ex
 
             if not inputs:
                 continue
+
+            # 
+            print("GOJO SATORU Inputs batch:", inputs)
 
             # Gerar respostas
             generation_time, generated_texts = generate_completions(
