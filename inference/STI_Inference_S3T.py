@@ -20,6 +20,7 @@ MONGO_URI = os.getenv("MONGODB_URI")
 mongo_client = MongoClient(MONGO_URI)
 db = mongo_client["experiments_db"]
 collection = db["experiment_results"]
+answer_collection = db["answer_results"]
 
 
 def insert_experiment_results(
@@ -55,6 +56,20 @@ def insert_experiment_results(
     return result.inserted_id
 
 
+def save_error_checkpoint(experiment_id, task_id, stage_name, error_msg):
+    """
+    Salva um checkpoint de erro em arquivo txt para recuperação posterior.
+    """
+    checkpoint_file = f"error_checkpoint_{experiment_id}.txt"
+    with open(checkpoint_file, 'w') as f:
+        f.write(f"experiment_id: {experiment_id}\n")
+        f.write(f"task_id: {task_id}\n")
+        f.write(f"stage: {stage_name}\n")
+        f.write(f"error: {error_msg}\n")
+        f.write(f"timestamp: {datetime.now().isoformat()}\n")
+    print(f"💾 Checkpoint de erro salvo em {checkpoint_file}")
+
+
 def finalize_experiment(experiment_id):
     """
     Atualiza o documento inicial de um experimento para marcar como concluído.
@@ -79,6 +94,63 @@ def finalize_experiment(experiment_id):
         {"$set": update_fields}
     )
 
+
+
+def create_or_update_answer_document(experiment_id, task_id, instance_id, stage_name, prompt, llm_answer, generation_time, consumed_tokens):
+    """
+    Cria ou atualiza um documento de resposta na collection answer_results.
+    Se o documento já existe (baseado em experiment_id e instance_id), atualiza adicionando a nova stage.
+    Caso contrário, cria um novo documento.
+    """
+    # Buscar documento existente
+    existing_doc = answer_collection.find_one({
+        "experiment_id": experiment_id,
+        "instance_id": instance_id
+    })
+    
+    if existing_doc:
+        # Documento existe - fazer update adicionando a nova stage
+        update_data = {
+            f"llm_answer.{stage_name}": llm_answer,
+            f"generation_time": existing_doc.get("generation_time", 0) + generation_time
+        }
+        
+        # Atualizar consumed_tokens se houver
+        if consumed_tokens is not None:
+            update_data["consumed_tokens"] = existing_doc.get("consumed_tokens", 0) + consumed_tokens
+        
+        answer_collection.update_one(
+            {"_id": existing_doc["_id"]},
+            {"$set": update_data}
+        )
+        return existing_doc["_id"]
+    else:
+        # Documento não existe - criar novo
+        doc = {
+            "experiment_id": experiment_id,
+            "task_id": task_id,
+            "instance_id": instance_id,
+            "prompt": prompt,
+            "llm_answer": {stage_name: llm_answer},
+            "generation_time": generation_time,
+            "consumed_tokens": consumed_tokens if consumed_tokens is not None else 0
+        }
+        result = answer_collection.insert_one(doc)
+        return result.inserted_id
+
+
+def check_instance_processed(experiment_id, instance_id, stage_name):
+    """
+    Verifica se uma instância específica já foi processada para uma determinada stage.
+    """
+    doc = answer_collection.find_one({
+        "experiment_id": experiment_id,
+        "instance_id": instance_id
+    })
+    
+    if doc and "llm_answer" in doc:
+        return stage_name in doc["llm_answer"]
+    return False
 
 
 def create_experiment_record(
@@ -161,17 +233,28 @@ CoT = pd.read_excel("data/cot_breakdown.xlsx")
 # -------------------------------
 # Função auxiliar: gera e salva só o que falta (agora com salvamento incremental)
 # -------------------------------
-def generate_missing_instances(stage_name, k_output_dir, k, input_builder_fn):
+def generate_missing_instances(stage_name, k_output_dir, k, input_builder_fn, experiment_id):
     csv_path = os.path.join(k_output_dir, f"free-form-{args.model_name}-STI-{k}-{stage_name}.csv")
 
-    # Ler progresso existente
+    # Ler progresso existente do CSV
     done_uids = set()
     if os.path.exists(csv_path):
         existing_df = pd.read_csv(csv_path)
         done_uids = set(existing_df["uid"].astype(str))
-        print(f"⚙️  {stage_name}: {len(done_uids)} instâncias já processadas para {k}.")
+        print(f"⚙️  {stage_name}: {len(done_uids)} instâncias já processadas para {k} (CSV).")
     else:
         existing_df = pd.DataFrame(columns=["uid", "generation", "generation_time"])
+    
+    # Verificar também no MongoDB quais instâncias já foram processadas nesta stage
+    mongo_done_uids = set()
+    for uid in data[k]["instance"].keys():
+        if check_instance_processed(experiment_id, str(uid), stage_name):
+            mongo_done_uids.add(str(uid))
+    
+    # Combinar ambos os conjuntos
+    done_uids = done_uids.union(mongo_done_uids)
+    if mongo_done_uids:
+        print(f"⚙️  {stage_name}: {len(mongo_done_uids)} instâncias já processadas para {k} (MongoDB).")
 
     # Filtrar instâncias pendentes
     pending = [(uid, instance) for uid, instance in data[k]["instance"].items() if str(uid) not in done_uids]
@@ -188,98 +271,23 @@ def generate_missing_instances(stage_name, k_output_dir, k, input_builder_fn):
         for i in range(0, len(pending), args.batch_size):
             batch = pending[i:i + args.batch_size]
             uids_batch = [uid for uid, _ in batch]
-            inputs = [input_builder_fn(uid, instance) for uid, instance in batch if input_builder_fn(uid, instance) is not None]
+            instances_batch = [instance for uid, instance in batch]
+            
+            # Construir inputs e manter mapeamento com UIDs
+            inputs = []
+            valid_uids = []
+            valid_instances = []
+            for uid, instance in batch:
+                input_prompt = input_builder_fn(uid, instance)
+                if input_prompt is not None:
+                    inputs.append(input_prompt)
+                    valid_uids.append(uid)
+                    valid_instances.append(instance)
 
             if not inputs:
                 continue
 
-            """
-
-            # Regras:
-                # No processamento das respostas -> continuar da onde parou
-                   - Contexto dos dados: 
-                        - Considere que temos uma lista de tarefas identificadas por 'k' (task_id).
-                        - Cada tarefa 'k' possui várias instâncias identificadas por  data[k]["instance"]['chave_da_instancia'].
-                        - Cada instancia possui 200 sub-tarefas para serem processadas. 
-                        - Considere que essas tarefas podem ser processadas corretamente ou dar algum problema no meio do processamento
-                        - Se der algum problema, como por exemplo a API da OpenAI cair, ou qualquer outro erro inesperado,
-                          o código deve ser capaz de retomar o processamento exatamente de onde parou, sem perder dados já processados.
-                        - Ou seja, é necessário implementar um mecanismo de checkpointing, onde o progresso é salvo periodicamente.
-                        - E quando executamos o código novamente, ele verifica quais instâncias já foram processadas e continua a partir da próxima instância pendente.
-                        - Considere que caso haja algum erro como os citados anteriormente, é necessário que o progresso seja salvo e 
-                            seja gerado um txt com o _id do experimento e a task_id (k) onde o erro ocorreu.
-
-
-            Gravar na collection 'answer_results' o resultado da geração.
-            Deve-se gravar um documento para cada instance dentro de cada task gerada.
-            Ex: Temos 12 tasks, cada uma com 200 instâncias.
-                Logo, teremos 12 * 200 = 2400 documentos na collection 'answer_results'.
-                Cada task tem um task_id, e para cada task_id, temos 200 instance_id.
-
-                - id (ObjectId)
-                - experiment_id (ObjectId) -- Esse id deve ser igual ao doc gerado no # Passo 1, fazendo um relacionamento entre eles. 
-                - task_id (str) -- str(k)
-                - instance_id (str) -- data[k]["instance"][]
-                    - A estrutura de data é: data['034']['instance'],
-                        - Logo, dentro data['034']['instance'] temos: {'034_53021': {...}, '034_52433': {...}, ...}
-                        - Nesse caso, o instance_id do primeiro doc seria '034_53021', do segundo '034_52433', etc.
-                        - Considere que o instance_id é a chave dentro do dicionário data[k]["instance"]  
-                        - E deve-se armazenar de maneira correta qual a instance_id para aquela task_id específica.
-
-                - prompt (juncao da query, instruction, context)
-                    - Deve ser o resultado da func: 
-                        -     def build_input_s1(uid, instance):
-                                return create_prompt_with_tulu_chat_format([{
-                                    "role": "user",
-                                    "content": (
-                                        "### Example:\n\n"
-                                        + "### Instruction: " + cot
-                                        + "\n\n### Task:\n\n"
-                                        + "### Instruction: " + reconstruct_instruction(instance, 1, False)
-                                        + "\n\n### Answer:\n\n"
-                                    )
-                                }])
-                - llm_answer:
-                    Se o inference_type for igual a "STI": 
-                        - (object com chave "s1", "s2", "s3", armazenando as respostas de cada etapa) -- Resposta gerada pelo modelo
-                        - OBS: Aqui temos algumas regras importantes, o número de respostas adicionadas por vez
-                        depende diretamente do agrs.batch_size, já que cada batch gera várias respostas.
-                        Ou seja, precisamos salvar as respostas de acordo com a quantidade de 
-                        batch_size. Se batch_size = 4, então adicionamos 4 respostas geradas para aquela instância,
-                        e assim sucessivamente até completar todas as instâncias (que são 200 no total) para cada task.
-                        
-                        Uma coisa importante de se observar é que o código puxa respostas em 3 etapas (s1, s2, s3).
-
-                            - Isso é determinado pelas chamadas das funções:
-                                generated_texts_s1 = generate_missing_instances("s1", k_output_dir, k, build_input_s1)
-                                generated_texts_s2 = generate_missing_instances("s2", k_output_dir, k, build_input_s2)
-                                generate_missing_instances("s3", k_output_dir, k, build_input_s3)
-                            - Ou seja, a resposta de uma instância é dividida em 3 etapas, e cada etapa gera uma resposta diferente.
-
-                        Então, para cada task, com 200 instâncias, teremos 200 respostas para s1, 200 para s2 e 200 para s3.
-                        Sendo que cada 200 respostas de cada instância é dividida entre as respostas de s1, s2 e s3.
-                        Logo, o que precisamos é que por exemplo, após salvar as respostas de s1,
-                        o código segue até as respostas de s2, ao chegar nesse estágio, as respostas geradas
-                        devem ser acrescentadas, fazendo um append, aos 200 documentos que já existem referentes as respostas de s1.
-                        e assim sucessivamente com as respostas de s3, que também devem ser acrescentadas
-                        aos mesmos 200 documentos que foram acrescentados na etapa de s2. Considere que para
-                        selecionar quais os registros que devem ser atualizados deve-se fazer o match pelo instance_id
-
-                        - Uma coisa importante a se levar em conta também é a dependência entre de qual experimento é esse conjunto de instâncias.
-                        - Lembre-se que cada experimento é único, e cada experimento tem um experiment_id.
-                        - Logo, para garantir que estamos atualizando o documento correto, devemos também fazer o match pelo experiment_id.
-                        - Então se rodamos os experimentos várias vezes, devemos atualizar as instâncias corretas de cada experimento pelo experiment_id e instance_id.
-                    Se o inference_type for igual a "MTI":
-                        - (object com chave "s1" armazenando uma resposta única) -- Resposta gerada pelo modelo
-
-                - Se o inference_type for igual a "STI"
-                        Lista de respostas, uma para cada etapa (s1, s2, s3)         
-                - Se o inference_type for igual a "MTI"
-                        Lista de respostas, uma única resposta com todas as etapas concatenadas
-                - generation_time (float) -- tempo gasto em segundos na geração daquela instância específica
-                - consumed_tokens (int) -- número de tokens consumidos na geração daquela instância específica
-            """
-
+            # Gerar respostas
             generation_time, generated_texts = generate_completions(
                 model,
                 tokenizer,
@@ -295,14 +303,40 @@ def generate_missing_instances(stage_name, k_output_dir, k, input_builder_fn):
                 top_p=1.0
             )
 
+            # Salvar cada resposta no MongoDB
+            for idx, (uid, instance, gen_text, gen_time) in enumerate(zip(valid_uids, valid_instances, generated_texts, generation_time)):
+                # Reconstruir o prompt para salvar no MongoDB
+                prompt = input_builder_fn(uid, instance)
+                
+                # Calcular tokens consumidos (aproximação baseada no texto gerado)
+                # Nota: Para precisão, seria necessário usar o tokenizer
+                consumed_tokens = len(gen_text.split())  # Aproximação simples
+                
+                try:
+                    # Salvar/atualizar no MongoDB
+                    create_or_update_answer_document(
+                        experiment_id=experiment_id,
+                        task_id=str(k),
+                        instance_id=str(uid),
+                        stage_name=stage_name,
+                        prompt=prompt,
+                        llm_answer=gen_text,
+                        generation_time=gen_time,
+                        consumed_tokens=consumed_tokens
+                    )
+                except Exception as mongo_error:
+                    print(f"⚠️  Erro ao salvar no MongoDB para {uid}: {mongo_error}")
+                    # Continuar processamento mesmo com erro do MongoDB
+
+            # Salvar também no CSV (backup)
             batch_df = pd.DataFrame({
-                "uid": uids_batch,
+                "uid": valid_uids,
                 "generation": generated_texts,
                 "generation_time": generation_time
             })
 
             all_new.append(batch_df)
-            uids_done.extend(uids_batch)
+            uids_done.extend(valid_uids)
 
             # Salvar incrementalmente a cada N gerações
             if len(all_new) * args.batch_size >= args.save_every or i + args.batch_size >= len(pending):
@@ -320,6 +354,8 @@ def generate_missing_instances(stage_name, k_output_dir, k, input_builder_fn):
 
     except Exception as e:
         print(f"❌ Erro durante {stage_name} para {k}: {e}")
+        # Salvar checkpoint de erro
+        save_error_checkpoint(experiment_id, str(k), stage_name, str(e))
         torch.cuda.empty_cache()
         return None
 
@@ -403,7 +439,7 @@ for k, v in list(data.items()):
     
 
     
-    generated_texts_s1 = generate_missing_instances("s1", k_output_dir, k, build_input_s1)
+    generated_texts_s1 = generate_missing_instances("s1", k_output_dir, k, build_input_s1, experiment_id)
     if generated_texts_s1 is None:
         continue
 
@@ -429,7 +465,7 @@ for k, v in list(data.items()):
         )
         return create_prompt_with_tulu_chat_format([{"role": "user", "content": content}])
 
-    generated_texts_s2 = generate_missing_instances("s2", k_output_dir, k, build_input_s2)
+    generated_texts_s2 = generate_missing_instances("s2", k_output_dir, k, build_input_s2, experiment_id)
     if generated_texts_s2 is None:
         continue
 
@@ -467,7 +503,7 @@ for k, v in list(data.items()):
         )
         return create_prompt_with_tulu_chat_format([{"role": "user", "content": content}])
 
-    generate_missing_instances("s3", k_output_dir, k, build_input_s3)
+    generate_missing_instances("s3", k_output_dir, k, build_input_s3, experiment_id)
     torch.cuda.empty_cache()
 
 
