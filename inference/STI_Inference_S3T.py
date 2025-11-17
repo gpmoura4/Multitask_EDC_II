@@ -200,13 +200,15 @@ def create_experiment_record(
     return result.inserted_id
 
 
-
+# python inference/STI_Inference_S3T.py --model_name gpt-3.5-turbo-0125 --batch_size 20 --output_dir ./output --is_test
 parser = argparse.ArgumentParser(description="Run the script with a specified model and batch size.")
 parser.add_argument("--model_name", type=str, required=True, help="Name of the model to load")
 parser.add_argument("--batch_size", type=int, required=True, help="Batch size for generation")
 parser.add_argument("--output_dir", type=str, required=True, help="Directory to save output results")
 parser.add_argument("--save_every", type=int, default=10, help="Number of generations before saving to CSV")
-parser.add_argument("--is_test", action="store_true", help="Run in test mode (process only one task)")
+parser.add_argument("--is_test", action="store_true", help="Run in test mode (process only specified task and instances)")
+parser.add_argument("--test_task_id", type=str, default=None, help="Specific task ID to process in test mode (e.g., '034')")
+parser.add_argument("--test_num_instances", type=int, default=None, help="Number of instances to process in test mode")
 
 
 args = parser.parse_args()
@@ -259,6 +261,12 @@ def generate_missing_instances(stage_name, k_output_dir, k, input_builder_fn, ex
 
     # Filtrar instâncias pendentes
     pending = [(uid, instance) for uid, instance in data[k]["instance"].items() if str(uid) not in done_uids]
+    
+    # Se estiver em modo de teste e test_num_instances for especificado, limitar o número de instâncias
+    if args.is_test and args.test_num_instances is not None:
+        pending = pending[:args.test_num_instances]
+        print(f"🧪 MODO TESTE: Limitando a {args.test_num_instances} instâncias")
+    
     if not pending:
         print(f"✅ Nenhuma instância restante para {stage_name} de {k}. Pulando...")
         return existing_df["generation"].tolist() if stage_name != "s3" else None
@@ -391,11 +399,30 @@ experiment_id = create_experiment_record(
 
 # Determinar quais tasks processar baseado no modo de teste
 if args.is_test:
-    # Modo teste: processar apenas a primeira task
-    tasks_to_process = list(data.items())[:1]
-    print("\n🧪 MODO DE TESTE ATIVADO: Processando apenas a primeira task")
-    print(f"Task selecionada: {tasks_to_process[0][0]}")
-    print(f"Número de instâncias: {len(tasks_to_process[0][1]['instance'])}\n")
+    # Modo teste: processar task específica ou primeira disponível
+    if args.test_task_id:
+        # Verificar se a task existe
+        if args.test_task_id in data:
+            tasks_to_process = [(args.test_task_id, data[args.test_task_id])]
+            print(f"\n🧪 MODO DE TESTE ATIVADO")
+            print(f"Task selecionada: {args.test_task_id}")
+        else:
+            available_tasks = list(data.keys())[:5]  # Mostrar primeiras 5 tasks
+            print(f"\n❌ ERRO: Task '{args.test_task_id}' não encontrada no dataset.")
+            print(f"Tasks disponíveis (primeiras 5): {', '.join(available_tasks)}")
+            exit(1)
+    else:
+        # Se não especificou task_id, usar a primeira
+        tasks_to_process = list(data.items())[:1]
+        print(f"\n🧪 MODO DE TESTE ATIVADO (primeira task)")
+        print(f"Task selecionada: {tasks_to_process[0][0]}")
+    
+    total_instances = len(tasks_to_process[0][1]['instance'])
+    instances_to_process = args.test_num_instances if args.test_num_instances else total_instances
+    instances_to_process = min(instances_to_process, total_instances)  # Não exceder o total disponível
+    
+    print(f"Número de instâncias a processar: {instances_to_process} de {total_instances}")
+    print(f"Batch size: {args.batch_size}\n")
 else:
     # Modo normal: processar todas as tasks
     tasks_to_process = list(data.items())
