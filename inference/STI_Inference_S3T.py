@@ -23,38 +23,6 @@ collection = db["experiment_results"]
 answer_collection = db["answer_results"]
 
 
-def insert_experiment_results(
-    date: datetime,
-    model_name: str,
-    uuid: str,
-    prompt: str,
-    batch_size: int,
-    params: dict | str,
-    consumed_tokens: int,
-    generation_time: float
-):
-    """
-    Insere um documento na coleção 'experiment_results' contendo
-    o estado do experimento em um dado momento.
-    """
-
-    # Monta o documento a ser inserido
-    doc = {
-        "date": date,
-        "model_name": model_name,
-        "uuid": uuid,
-        "prompt": prompt,
-        "batch_size": batch_size,
-        "params": params,
-        "consumed_tokens": consumed_tokens,
-        "generation_time": generation_time
-    }
-
-    # Insere no MongoDB
-    result = collection.insert_one(doc)
-
-    return result.inserted_id
-
 
 def save_error_checkpoint(experiment_id, task_id, stage_name, error_msg):
     """
@@ -201,7 +169,6 @@ def create_experiment_record(
     return result.inserted_id
 
 
-# python inference/STI_Inference_S3T.py --model_name gpt-3.5-turbo-0125 --batch_size 20 --output_dir ./output --is_test --test_task_id "034" --test_num_instances 10
 parser = argparse.ArgumentParser(description="Run the script with a specified model and batch size.")
 parser.add_argument("--model_name", type=str, required=True, help="Name of the model to load")
 parser.add_argument("--batch_size", type=int, required=True, help="Batch size for generation")
@@ -297,8 +264,7 @@ def generate_missing_instances(stage_name, k_output_dir, k, input_builder_fn, ex
             if not inputs:
                 continue
 
-            # 
-            print("GOJO SATORU Inputs batch:", inputs)
+            
 
             # Gerar respostas
             generation_time, generated_texts = generate_completions(
