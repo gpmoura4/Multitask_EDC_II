@@ -11,7 +11,7 @@ import os
 from bson import ObjectId
 from datetime import datetime
 
-
+from bson import ObjectId
 from pymongo import MongoClient
 from datetime import datetime
 
@@ -24,6 +24,30 @@ db = mongo_client["experiments_db"]
 collection = db["experiment_results"]
 answer_collection = db["answer_results"]
 
+def delete_experiment_and_answers(experiment_id: str) -> dict:
+    """
+    Remove:
+      1. O documento da collection 'experiment_results' com o _id fornecido
+      2. Todos os documentos da collection 'answer_results' cujo experiment_id == _id
+    """
+
+    # Converte o id recebido para ObjectId
+    try:
+        exp_obj_id = ObjectId(experiment_id)
+    except Exception as e:
+        raise ValueError(f"experiment_id inválido: {experiment_id}") from e
+
+    # 1. Apagar o experimento da experiment_results
+    exp_delete_result = collection.delete_one({"_id": exp_obj_id})
+
+    # 2. Apagar todas as respostas relacionadas na answer_results
+    ans_delete_result = answer_collection.delete_many({"experiment_id": exp_obj_id})
+
+    # Retorna quantos documentos foram removidos
+    return {
+        "experiment_deleted": exp_delete_result.deleted_count,
+        "answer_results_deleted": ans_delete_result.deleted_count
+    }
 
 
 def save_error_checkpoint(experiment_id, task_id, stage_name, error_msg):
@@ -83,9 +107,11 @@ def create_or_update_answer_document(experiment_id, task_id, instance_id, stage_
         update_data = {
             f"llm_answer.{stage_name}": llm_answer,
             f"generation_time": existing_doc.get("generation_time", 0) + generation_time,
-            "prompt": prompt  # Atualizar prompt para o prompt atual (final) da etapa
         }
-        
+        # f"generation_time": existing_doc.get("generation_time", 0) + generation_time
+        # f"generation_time": existing_doc.get("generation_tim-e", 0) + generation_time,
+        # "prompt": prompt 
+
         # Atualizar consumed_tokens se houver
         if consumed_tokens is not None:
             update_data["consumed_tokens"] = existing_doc.get("consumed_tokens", 0) + consumed_tokens
