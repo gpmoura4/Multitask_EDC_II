@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import json
 import torch
 import pandas as pd
@@ -298,7 +300,7 @@ def generate_missing_instances(stage_name, k_output_dir, k, input_builder_fn, ex
                 continue
 
             # 
-            print("GOJO SATORU Inputs batch:", inputs)
+            #print("GOJO SATORU Inputs batch:", inputs)
 
             # Gerar respostas
             generation_time, generated_texts = generate_completions(
