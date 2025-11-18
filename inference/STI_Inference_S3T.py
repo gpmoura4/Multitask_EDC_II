@@ -1,13 +1,14 @@
-from __future__ import annotations
-
 import json
 import torch
 import pandas as pd
 from src import reconstruct_instruction
 from evaluate.utils import load_hf_lm_and_tokenizer, generate_completions
-from evaluate.templates import create_prompt_with_tulu_chat_format
+from evaluate.templates import create_prompt_with_tulu_chat_format 
 import argparse
 import os
+from bson import ObjectId
+from datetime import datetime
+
 
 from pymongo import MongoClient
 from datetime import datetime
@@ -19,17 +20,18 @@ MONGO_URI = os.getenv("MONGODB_URI")
 mongo_client = MongoClient(MONGO_URI)
 db = mongo_client["experiments_db"]
 collection = db["experiment_results"]
+answer_collection = db["answer_results"]
 
 
 def insert_experiment_results(
-        date: datetime,
-        model_name: str,
-        uuid: str,
-        prompt: str,
-        batch_size: int,
-        params: dict | str,
-        consumed_tokens: int,
-        generation_time: float
+    date: datetime,
+    model_name: str,
+    uuid: str,
+    prompt: str,
+    batch_size: int,
+    params: dict | str,
+    consumed_tokens: int,
+    generation_time: float
 ):
     """
     Insere um documento na coleção 'experiment_results' contendo
@@ -52,6 +54,20 @@ def insert_experiment_results(
     result = collection.insert_one(doc)
 
     return result.inserted_id
+
+
+def save_error_checkpoint(experiment_id, task_id, stage_name, error_msg):
+    """
+    Salva um checkpoint de erro em arquivo txt para recuperação posterior.
+    """
+    checkpoint_file = f"error_checkpoint_{experiment_id}.txt"
+    with open(checkpoint_file, 'w') as f:
+        f.write(f"experiment_id: {experiment_id}\n")
+        f.write(f"task_id: {task_id}\n")
+        f.write(f"stage: {stage_name}\n")
+        f.write(f"error: {error_msg}\n")
+        f.write(f"timestamp: {datetime.now().isoformat()}\n")
+    print(f"💾 Checkpoint de erro salvo em {checkpoint_file}")
 
 
 def finalize_experiment(experiment_id):
@@ -79,32 +95,92 @@ def finalize_experiment(experiment_id):
     )
 
 
+
+def create_or_update_answer_document(experiment_id, task_id, instance_id, stage_name, prompt, llm_answer, generation_time, consumed_tokens):
+    """
+    Cria ou atualiza um documento de resposta na collection answer_results.
+    Se o documento já existe (baseado em experiment_id e instance_id), atualiza adicionando a nova stage.
+    Caso contrário, cria um novo documento.
+    """
+    # Buscar documento existente
+    existing_doc = answer_collection.find_one({
+        "experiment_id": experiment_id,
+        "instance_id": instance_id
+    })
+    
+    if existing_doc:
+        # Documento existe - fazer update adicionando a nova stage
+        update_data = {
+            f"llm_answer.{stage_name}": llm_answer,
+            f"generation_time": existing_doc.get("generation_time", 0) + generation_time,
+            "prompt": prompt  # Atualizar prompt para o prompt atual (final) da etapa
+        }
+        
+        # Atualizar consumed_tokens se houver
+        if consumed_tokens is not None:
+            update_data["consumed_tokens"] = existing_doc.get("consumed_tokens", 0) + consumed_tokens
+        
+        answer_collection.update_one(
+            {"_id": existing_doc["_id"]},
+            {"$set": update_data}
+        )
+        return existing_doc["_id"]
+    else:
+        # Documento não existe - criar novo
+        doc = {
+            "experiment_id": experiment_id,
+            "task_id": task_id,
+            "instance_id": instance_id,
+            "prompt": prompt,
+            "llm_answer": {stage_name: llm_answer},
+            "generation_time": generation_time,
+            "consumed_tokens": consumed_tokens if consumed_tokens is not None else 0
+        }
+        result = answer_collection.insert_one(doc)
+        return result.inserted_id
+
+
+def check_instance_processed(experiment_id, instance_id, stage_name):
+    """
+    Verifica se uma instância específica já foi processada para uma determinada stage.
+    """
+    doc = answer_collection.find_one({
+        "experiment_id": experiment_id,
+        "instance_id": instance_id
+    })
+    
+    if doc and "llm_answer" in doc:
+        return stage_name in doc["llm_answer"]
+    return False
+
+
 def create_experiment_record(
-        inference_type: str,
-        experiment_name: str,
-        batch_size: int,
-        save_every: int,
-        model_name: str,
-        llm_params: dict,
-        id: str | None = None,
+    inference_type: str,
+    experiment_name: str,
+    batch_size: int,
+    save_every: int,
+    model_name: str,
+    llm_params: dict,
+    id: str | None = None,
 ):
     """
     Cria o documento inicial do experimento.
-    Este é chamado APENAS antes do loop principal.
-
-    Se o parâmetro opcional 'id' for fornecido, a função busca um experimento
-    existente no banco de dados usando esse 'id' como chave de identificação
-    e retorna o _id do documento encontrado.
     """
 
-    # Se 'id' foi fornecido, buscar experimento existente
+    # Se 'id' foi fornecido, tentar buscar experimento existente
     if id is not None:
-        existing_doc = collection.find_one({"id": id})
+        try:
+            object_id = ObjectId(id)   # converte string → ObjectId
+            existing_doc = collection.find_one({"_id": object_id})
+        except Exception:
+            print(f"❌ ID '{id}' não é um ObjectId válido. Criando novo experimento.")
+            existing_doc = None
+
         if existing_doc:
-            print(f"⚠️  Experimento encontrado com id='{id}'. Retornando _id do documento existente.")
+            print(f"⚠️  Experimento encontrado com _id='{id}'. Retornando documento existente.")
             return existing_doc["_id"]
         else:
-            print(f"⚠️  Nenhum experimento encontrado com id='{id}'. Criando novo experimento.")
+            print(f"⚠️  Nenhum experimento encontrado com _id='{id}'. Criando novo experimento.")
 
     initial_time = datetime.now()
 
@@ -116,35 +192,33 @@ def create_experiment_record(
         "model_name": model_name,
         "llm_params": llm_params,
         "initial_time": initial_time,
-        "final_time": None,  # será preenchido no final
-        "total_time": None,  # será preenchido no final
-        "experimentIsOver": False  # muda para True ao fim do experimento
+        "final_time": None,
+        "total_time": None,
+        "experimentIsOver": False
     }
 
-    # Se 'id' foi fornecido, incluí-lo no documento
-    if id is not None:
-        doc["id"] = id
-
     result = collection.insert_one(doc)
-    return result.inserted_id  # retornamos o ID para update posterior
+    return result.inserted_id
 
 
+# python inference/STI_Inference_S3T.py --model_name gpt-3.5-turbo-0125 --batch_size 20 --output_dir ./output --is_test --test_task_id "034" --test_num_instances 10
 parser = argparse.ArgumentParser(description="Run the script with a specified model and batch size.")
 parser.add_argument("--model_name", type=str, required=True, help="Name of the model to load")
 parser.add_argument("--batch_size", type=int, required=True, help="Batch size for generation")
 parser.add_argument("--output_dir", type=str, required=True, help="Directory to save output results")
 parser.add_argument("--save_every", type=int, default=10, help="Number of generations before saving to CSV")
+parser.add_argument("--is_test", action="store_true", help="Run in test mode (process only specified task and instances)")
+parser.add_argument("--test_task_id", type=str, default=None, help="Specific task ID to process in test mode (e.g., '034')")
+parser.add_argument("--test_num_instances", type=int, default=None, help="Number of instances to process in test mode")
+
 
 args = parser.parse_args()
 
 # ------------------------------
 # Criação de diretórios
 # ------------------------------
-# Sanear o nome do modelo para uso em paths (evitar "/")
-safe_model_name = args.model_name.replace("/", "_").replace("\\", "_")
-
-# Caminho base: {output_dir}/{safe_model_name}/STI
-base_output_path = os.path.join(args.output_dir, safe_model_name, "STI")
+# Caminho base: {output_dir}/{model_name}/STI
+base_output_path = os.path.join(args.output_dir, args.model_name, "STI")
 os.makedirs(base_output_path, exist_ok=True)
 
 # ------------------------------
@@ -160,28 +234,40 @@ model, tokenizer = load_hf_lm_and_tokenizer(
 
 CoT = pd.read_excel("data/cot_breakdown.xlsx")
 
-
 # -------------------------------
 # Função auxiliar: gera e salva só o que falta (agora com salvamento incremental)
 # -------------------------------
-def generate_missing_instances(stage_name, k_output_dir, k, input_builder_fn):
-    # usar safe_model_name para evitar separar diretórios pelo '/'
-    csv_path = os.path.join(
-        k_output_dir,
-        f"free-form-{safe_model_name}-STI-{k}-{stage_name}.csv"
-    )
+def generate_missing_instances(stage_name, k_output_dir, k, input_builder_fn, experiment_id):
+    csv_path = os.path.join(k_output_dir, f"free-form-{args.model_name}-STI-{k}-{stage_name}.csv")
 
-    # Ler progresso existente
+    # Ler progresso existente do CSV
     done_uids = set()
     if os.path.exists(csv_path):
         existing_df = pd.read_csv(csv_path)
         done_uids = set(existing_df["uid"].astype(str))
-        print(f"⚙️  {stage_name}: {len(done_uids)} instâncias já processadas para {k}.")
+        print(f"⚙️  {stage_name}: {len(done_uids)} instâncias já processadas para {k} (CSV).")
     else:
         existing_df = pd.DataFrame(columns=["uid", "generation", "generation_time"])
+    
+    # Verificar também no MongoDB quais instâncias já foram processadas nesta stage
+    mongo_done_uids = set()
+    for uid in data[k]["instance"].keys():
+        if check_instance_processed(experiment_id, str(uid), stage_name):
+            mongo_done_uids.add(str(uid))
+    
+    # Combinar ambos os conjuntos
+    done_uids = done_uids.union(mongo_done_uids)
+    if mongo_done_uids:
+        print(f"⚙️  {stage_name}: {len(mongo_done_uids)} instâncias já processadas para {k} (MongoDB).")
 
     # Filtrar instâncias pendentes
     pending = [(uid, instance) for uid, instance in data[k]["instance"].items() if str(uid) not in done_uids]
+    
+    # Se estiver em modo de teste e test_num_instances for especificado, limitar o número de instâncias
+    if args.is_test and args.test_num_instances is not None:
+        pending = pending[:args.test_num_instances]
+        print(f"🧪 MODO TESTE: Limitando a {args.test_num_instances} instâncias")
+    
     if not pending:
         print(f"✅ Nenhuma instância restante para {stage_name} de {k}. Pulando...")
         return existing_df["generation"].tolist() if stage_name != "s3" else None
@@ -195,89 +281,26 @@ def generate_missing_instances(stage_name, k_output_dir, k, input_builder_fn):
         for i in range(0, len(pending), args.batch_size):
             batch = pending[i:i + args.batch_size]
             uids_batch = [uid for uid, _ in batch]
-            inputs = [input_builder_fn(uid, instance) for uid, instance in batch if
-                      input_builder_fn(uid, instance) is not None]
+            instances_batch = [instance for uid, instance in batch]
+            
+            # Construir inputs e manter mapeamento com UIDs
+            inputs = []
+            valid_uids = []
+            valid_instances = []
+            for uid, instance in batch:
+                input_prompt = input_builder_fn(uid, instance)
+                if input_prompt is not None:
+                    inputs.append(input_prompt)
+                    valid_uids.append(uid)
+                    valid_instances.append(instance)
 
             if not inputs:
                 continue
 
-            """
-            # Nao criar experimento novo
-            # Das respostas -> continuar da onde parou
-
-            # Filtrar pelo experiment_id e com experimentIsOver = false 
             # 
+            print("GOJO SATORU Inputs batch:", inputs)
 
-            Gravar na collection 'answer_results' o resultado da geração.
-            Deve-se gravar um documento para cada instance dentro de cada task gerada.
-            Ex: Temos 12 tasks, cada uma com 200 instâncias.
-                Logo, teremos 12 * 200 = 2400 documentos na collection 'answer_results'.
-                Cada task tem um task_id, e para cada task_id, temos 200 instance_id.
-
-                - id (ObjectId)
-                - experiment_id (ObjectId) -- Esse id deve ser igual ao doc gerado no # Passo 1, fazendo um relacionamento entre eles. 
-                - task_id (str) -- str(k)
-                - instance_id (str) -- data[k]["instance"][]
-                    - A estrutura de data é: data['034']['instance'],
-                        - Logo, dentro data['034']['instance'] temos: {'034_53021': {...}, '034_52433': {...}, ...}
-                        - Nesse caso, o instance_id do primeiro doc seria '034_53021', do segundo '034_52433', etc.
-                        - Considere que o instance_id é a chave dentro do dicionário data[k]["instance"]  
-                        - E deve-se armazenar de maneira correta qual a instance_id para aquela task_id específica.
-
-                - prompt (juncao da query, instruction, context)
-                    - Deve ser o resultado da func: 
-                        -     def build_input_s1(uid, instance):
-                                return create_prompt_with_tulu_chat_format([{
-                                    "role": "user",
-                                    "content": (
-                                        "### Example:\n\n"
-                                        + "### Instruction: " + cot
-                                        + "\n\n### Task:\n\n"
-                                        + "### Instruction: " + reconstruct_instruction(instance, 1, False)
-                                        + "\n\n### Answer:\n\n"
-                                    )
-                                }])
-                - llm_answer:
-                    Se o inference_type for igual a "STI": 
-                        - (object com chave "s1", "s2", "s3", armazenando as respostas de cada etapa) -- Resposta gerada pelo modelo
-                        - OBS: Aqui temos algumas regras importantes, o número de respostas adicionadas por vez
-                        depende diretamente do agrs.batch_size, já que cada batch gera várias respostas.
-                        Ou seja, precisamos salvar as respostas de acordo com a quantidade de 
-                        batch_size. Se batch_size = 4, então adicionamos 4 respostas geradas para aquela instância,
-                        e assim sucessivamente até completar todas as instâncias (que são 200 no total) para cada task.
-
-                        Uma coisa importante de se observar é que o código puxa respostas em 3 etapas (s1, s2, s3).
-
-                            - Isso é determinado pelas chamadas das funções:
-                                generated_texts_s1 = generate_missing_instances("s1", k_output_dir, k, build_input_s1)
-                                generated_texts_s2 = generate_missing_instances("s2", k_output_dir, k, build_input_s2)
-                                generate_missing_instances("s3", k_output_dir, k, build_input_s3)
-                            - Ou seja, a resposta de uma instância é dividida em 3 etapas, e cada etapa gera uma resposta diferente.
-
-                        Então, para cada task, com 200 instâncias, teremos 200 respostas para s1, 200 para s2 e 200 para s3.
-                        Sendo que cada 200 respostas de cada instância é dividida entre as respostas de s1, s2 e s3.
-                        Logo, o que precisamos é que por exemplo, após salvar as respostas de s1,
-                        o código segue até as respostas de s2, ao chegar nesse estágio, as respostas geradas
-                        devem ser acrescentadas, fazendo um append, aos 200 documentos que já existem referentes as respostas de s1.
-                        e assim sucessivamente com as respostas de s3, que também devem ser acrescentadas
-                        aos mesmos 200 documentos que foram acrescentados na etapa de s2. Considere que para
-                        selecionar quais os registros que devem ser atualizados deve-se fazer o match pelo instance_id
-
-                        - Uma coisa importante a se levar em conta também é a dependência entre de qual experimento é esse conjunto de instâncias.
-                        - Lembre-se que cada experimento é único, e cada experimento tem um experiment_id.
-                        - Logo, para garantir que estamos atualizando o documento correto, devemos também fazer o match pelo experiment_id.
-                        - Então se rodamos os experimentos várias vezes, devemos atualizar as instâncias corretas de cada experimento pelo experiment_id e instance_id.
-                    Se o inference_type for igual a "MTI":
-                        - (object com chave "s1" armazenando uma resposta única) -- Resposta gerada pelo modelo
-
-                - Se o inference_type for igual a "STI"
-                        Lista de respostas, uma para cada etapa (s1, s2, s3)         
-                - Se o inference_type for igual a "MTI"
-                        Lista de respostas, uma única resposta com todas as etapas concatenadas
-                - generation_time (float) -- tempo gasto em segundos na geração daquela instância específica
-                - consumed_tokens (int) -- número de tokens consumidos na geração daquela instância específica
-            """
-
+            # Gerar respostas
             generation_time, generated_texts = generate_completions(
                 model,
                 tokenizer,
@@ -293,14 +316,40 @@ def generate_missing_instances(stage_name, k_output_dir, k, input_builder_fn):
                 top_p=1.0
             )
 
+            # Salvar cada resposta no MongoDB
+            for idx, (uid, instance, gen_text, gen_time) in enumerate(zip(valid_uids, valid_instances, generated_texts, generation_time)):
+                # Reconstruir o prompt para salvar no MongoDB
+                prompt = input_builder_fn(uid, instance)
+                
+                # Calcular tokens consumidos (aproximação baseada no texto gerado)
+                # Nota: Para precisão, seria necessário usar o tokenizer
+                consumed_tokens = len(gen_text.split())  # Aproximação simples
+                
+                try:
+                    # Salvar/atualizar no MongoDB
+                    create_or_update_answer_document(
+                        experiment_id=experiment_id,
+                        task_id=str(k),
+                        instance_id=str(uid),
+                        stage_name=stage_name,
+                        prompt=prompt,
+                        llm_answer=gen_text,
+                        generation_time=gen_time,
+                        consumed_tokens=consumed_tokens
+                    )
+                except Exception as mongo_error:
+                    print(f"⚠️  Erro ao salvar no MongoDB para {uid}: {mongo_error}")
+                    # Continuar processamento mesmo com erro do MongoDB
+
+            # Salvar também no CSV (backup)
             batch_df = pd.DataFrame({
-                "uid": uids_batch,
+                "uid": valid_uids,
                 "generation": generated_texts,
                 "generation_time": generation_time
             })
 
             all_new.append(batch_df)
-            uids_done.extend(uids_batch)
+            uids_done.extend(valid_uids)
 
             # Salvar incrementalmente a cada N gerações
             if len(all_new) * args.batch_size >= args.save_every or i + args.batch_size >= len(pending):
@@ -318,11 +367,14 @@ def generate_missing_instances(stage_name, k_output_dir, k, input_builder_fn):
 
     except Exception as e:
         print(f"❌ Erro durante {stage_name} para {k}: {e}")
+        # Salvar checkpoint de erro
+        save_error_checkpoint(experiment_id, str(k), stage_name, str(e))
         torch.cuda.empty_cache()
         return None
 
 
 print("starting evaluation")
+
 
 experiment_id = create_experiment_record(
     inference_type="STI",
@@ -349,7 +401,38 @@ experiment_id = create_experiment_record(
 # Loop principal
 # -------------------------------
 
-for k, v in list(data.items()):
+# Determinar quais tasks processar baseado no modo de teste
+if args.is_test:
+    # Modo teste: processar task específica ou primeira disponível
+    if args.test_task_id:
+        # Verificar se a task existe
+        if args.test_task_id in data:
+            tasks_to_process = [(args.test_task_id, data[args.test_task_id])]
+            print(f"\n🧪 MODO DE TESTE ATIVADO")
+            print(f"Task selecionada: {args.test_task_id}")
+        else:
+            available_tasks = list(data.keys())[:5]  # Mostrar primeiras 5 tasks
+            print(f"\n❌ ERRO: Task '{args.test_task_id}' não encontrada no dataset.")
+            print(f"Tasks disponíveis (primeiras 5): {', '.join(available_tasks)}")
+            exit(1)
+    else:
+        # Se não especificou task_id, usar a primeira
+        tasks_to_process = list(data.items())[:1]
+        print(f"\n🧪 MODO DE TESTE ATIVADO (primeira task)")
+        print(f"Task selecionada: {tasks_to_process[0][0]}")
+    
+    total_instances = len(tasks_to_process[0][1]['instance'])
+    instances_to_process = args.test_num_instances if args.test_num_instances else total_instances
+    instances_to_process = min(instances_to_process, total_instances)  # Não exceder o total disponível
+    
+    print(f"Número de instâncias a processar: {instances_to_process} de {total_instances}")
+    print(f"Batch size: {args.batch_size}\n")
+else:
+    # Modo normal: processar todas as tasks
+    tasks_to_process = list(data.items())
+    print(f"\n📊 MODO COMPLETO: Processando todas as {len(tasks_to_process)} tasks\n")
+
+for k, v in tasks_to_process:
     print(f"\n=== Processando tuid {k} ===")
 
     k_output_dir = os.path.join(base_output_path, str(k))
@@ -383,27 +466,28 @@ for k, v in list(data.items()):
             - top_p=1.0
     """
 
+    
 
     # ---------- Etapa 1 ----------
     def build_input_s1(uid, instance):
         return create_prompt_with_tulu_chat_format([{
             "role": "user",
             "content": (
-                    "### Example:\n\n"
-                    + "### Instruction: " + cot
-                    + "\n\n### Task:\n\n"
-                    + "### Instruction: " + reconstruct_instruction(instance, 1, False)
-                    + "\n\n### Answer:\n\n"
+                "### Example:\n\n"
+                + "### Instruction: " + cot
+                + "\n\n### Task:\n\n"
+                + "### Instruction: " + reconstruct_instruction(instance, 1, False)
+                + "\n\n### Answer:\n\n"
             )
         }])
+    
 
-
-    generated_texts_s1 = generate_missing_instances("s1", k_output_dir, k, build_input_s1)
+    
+    generated_texts_s1 = generate_missing_instances("s1", k_output_dir, k, build_input_s1, experiment_id)
     if generated_texts_s1 is None:
         continue
 
     torch.cuda.empty_cache()
-
 
     # ---------- Etapa 2 ----------
     def build_input_s2(uid, instance):
@@ -414,24 +498,22 @@ for k, v in list(data.items()):
         query1 = reconstruct_instruction(instance, 1, False)
         query2 = reconstruct_instruction(instance, 2, False)
         content = (
-                "### Example:\n\n"
-                + "### (1) Instruction: " + s1
-                + "\n\n### (2) Instruction: " + s2
-                + "\n\n### Task:\n\n"
-                + "### (1) Instruction: " + query1
-                + "\n\n### Answer:\n\n" + str(gen1)
-                + "\n\n### (2) Instruction: " + query2
-                + "\n\n### Answer:"
+            "### Example:\n\n"
+            + "### (1) Instruction: " + s1
+            + "\n\n### (2) Instruction: " + s2
+            + "\n\n### Task:\n\n"
+            + "### (1) Instruction: " + query1
+            + "\n\n### Answer:\n\n" + str(gen1)
+            + "\n\n### (2) Instruction: " + query2
+            + "\n\n### Answer:"
         )
         return create_prompt_with_tulu_chat_format([{"role": "user", "content": content}])
 
-
-    generated_texts_s2 = generate_missing_instances("s2", k_output_dir, k, build_input_s2)
+    generated_texts_s2 = generate_missing_instances("s2", k_output_dir, k, build_input_s2, experiment_id)
     if generated_texts_s2 is None:
         continue
 
     torch.cuda.empty_cache()
-
 
     # ---------- Etapa 3 ----------
     def build_input_s3(uid, instance):
@@ -451,23 +533,23 @@ for k, v in list(data.items()):
         query3 = reconstruct_instruction(instance, 3, False)
 
         content = (
-                "### Example:\n\n"
-                + "### (1) Instruction: " + s1
-                + "\n\n### (2) Instruction: " + s2
-                + "\n\n### (3) Instruction: " + s3
-                + "\n\n### Task:\n\n"
-                + "### (1) Instruction: " + query1
-                + "\n\n### Answer:\n\n" + str(gen1)
-                + "\n\n### (2) Instruction: " + query2
-                + "\n\n### Answer:\n\n" + str(gen2)
-                + "\n\n### (3) Instruction: " + query3
-                + "\n\n### Answer:"
+            "### Example:\n\n"
+            + "### (1) Instruction: " + s1
+            + "\n\n### (2) Instruction: " + s2
+            + "\n\n### (3) Instruction: " + s3
+            + "\n\n### Task:\n\n"
+            + "### (1) Instruction: " + query1
+            + "\n\n### Answer:\n\n" + str(gen1)
+            + "\n\n### (2) Instruction: " + query2
+            + "\n\n### Answer:\n\n" + str(gen2)
+            + "\n\n### (3) Instruction: " + query3
+            + "\n\n### Answer:"
         )
         return create_prompt_with_tulu_chat_format([{"role": "user", "content": content}])
 
-
-    generate_missing_instances("s3", k_output_dir, k, build_input_s3)
+    generate_missing_instances("s3", k_output_dir, k, build_input_s3, experiment_id)
     torch.cuda.empty_cache()
+
 
 finalize_experiment(experiment_id)
 
