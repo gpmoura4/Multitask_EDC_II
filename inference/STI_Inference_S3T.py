@@ -15,6 +15,8 @@ from bson import ObjectId
 from pymongo import MongoClient
 from datetime import datetime
 
+
+
 # Conexão MongoDB (exemplo para teste, substitua pela uri real)
 MONGO_URI = os.getenv("MONGODB_URI")
 
@@ -169,7 +171,7 @@ def create_experiment_record(
             object_id = ObjectId(id)   # converte string → ObjectId
             existing_doc = collection.find_one({"_id": object_id})
         except Exception:
-            print(f"❌ ID '{id}' não é um ObjectId válido. Criando novo experimento.")
+            print(f"ID '{id}' não é um ObjectId válido. Criando novo experimento.")
             existing_doc = None
 
         if existing_doc:
@@ -261,13 +263,13 @@ def generate_missing_instances(stage_name, k_output_dir, k, input_builder_fn, ex
     # Se estiver em modo de teste e test_num_instances for especificado, limitar o número de instâncias
     if args.is_test and args.test_num_instances is not None:
         pending = pending[:args.test_num_instances]
-        print(f"🧪 MODO TESTE: Limitando a {args.test_num_instances} instâncias")
+        print(f" MODO TESTE: Limitando a {args.test_num_instances} instâncias")
     
     if not pending:
         print(f"✅ Nenhuma instância restante para {stage_name} de {k}. Pulando...")
         return existing_df["generation"].tolist() if stage_name != "s3" else None
 
-    print(f"🚀 Gerando {len(pending)} instâncias restantes em {stage_name} para {k}...")
+    print(f"Gerando {len(pending)} instâncias restantes em {stage_name} para {k}...")
 
     all_new = []
     uids_done = []
@@ -360,7 +362,7 @@ def generate_missing_instances(stage_name, k_output_dir, k, input_builder_fn, ex
         return existing_df["generation"].tolist() if stage_name != "s3" else None
 
     except Exception as e:
-        print(f"❌ Erro durante {stage_name} para {k}: {e}")
+        print(f"Erro durante {stage_name} para {k}: {e}")
         # Salvar checkpoint de erro
         save_error_checkpoint(experiment_id, str(k), stage_name, str(e))
         torch.cuda.empty_cache()
@@ -372,7 +374,7 @@ print("starting evaluation")
 
 experiment_id = create_experiment_record(
     inference_type="STI",
-    experiment_name="STI_Experiment_v1",
+    experiment_name="gemeio123",
     batch_size=args.batch_size,
     save_every=args.save_every,
     model_name=args.model_name,
@@ -402,17 +404,17 @@ if args.is_test:
         # Verificar se a task existe
         if args.test_task_id in data:
             tasks_to_process = [(args.test_task_id, data[args.test_task_id])]
-            print(f"\n🧪 MODO DE TESTE ATIVADO")
+            print(f"\n MODO DE TESTE ATIVADO")
             print(f"Task selecionada: {args.test_task_id}")
         else:
             available_tasks = list(data.keys())[:5]  # Mostrar primeiras 5 tasks
-            print(f"\n❌ ERRO: Task '{args.test_task_id}' não encontrada no dataset.")
+            print(f"\nERRO: Task '{args.test_task_id}' não encontrada no dataset.")
             print(f"Tasks disponíveis (primeiras 5): {', '.join(available_tasks)}")
             exit(1)
     else:
         # Se não especificou task_id, usar a primeira
         tasks_to_process = list(data.items())[:1]
-        print(f"\n🧪 MODO DE TESTE ATIVADO (primeira task)")
+        print(f"\n MODO DE TESTE ATIVADO (primeira task)")
         print(f"Task selecionada: {tasks_to_process[0][0]}")
     
     total_instances = len(tasks_to_process[0][1]['instance'])

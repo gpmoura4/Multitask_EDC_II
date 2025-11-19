@@ -1,0 +1,5 @@
+experiment_id: 691ce165138201253fccb44e
+task_id: 034
+stage: s1
+error: Cannot save file into a non-existent directory: 'data\openai\gpt-oss-20b\STI\034\free-form-openai'
+timestamp: 2025-11-18T18:13:18.682494
