@@ -387,8 +387,9 @@ experiment_id = create_experiment_record(
         "do_sample": True,
         "temperature": 0.7,
         "top_p": 1.0
-    }
+    },
     # id (OPCIONAL)
+    id="691e5cdb47cb353cce0b14b0"
 )
 
 # -------------------------------
