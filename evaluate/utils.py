@@ -94,6 +94,7 @@ def generate_completions(
             return_tensors="pt",
             padding=True,
             truncation=True,
+            max_length=2048,  # Define um tamanho máximo para evitar warnings
             add_special_tokens=add_special_tokens,
         ).to(model.device)
 
@@ -110,6 +111,7 @@ def generate_completions(
                 temperature=temperature,
                 top_p=top_p,
                 pad_token_id=tokenizer.eos_token_id,
+                eos_token_id=tokenizer.eos_token_id,  # Garante que o modelo pare corretamente
             )
 
         if torch.cuda.is_available():
@@ -190,6 +192,9 @@ def load_hf_lm_and_tokenizer(
     tokenizer = AutoTokenizer.from_pretrained(model_name, use_fast=True)
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
+    
+    # Para modelos decoder-only, padding deve ser à esquerda
+    tokenizer.padding_side = 'left'
 
     model = AutoModelForCausalLM.from_pretrained(
         model_name,
