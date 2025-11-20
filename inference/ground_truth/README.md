@@ -29,6 +29,7 @@ O script `generate_gt.py` realiza a avaliação automática de respostas geradas
 uv run -m inference.ground_truth.generate_gt \
     --sti_experiment_id "674a1b2c3d4e5f6g7h8i9j0k" \
     --mti_experiment_id "674a1b2c3d4e5f6g7h8i9j0l" \
+    --experiment_gt_name "GT_Test_Llama2_7b" \
     --evaluator_model "gpt-4o-mini-2024-07-18" \
     --is_test \
     --seed 42
@@ -40,6 +41,7 @@ uv run -m inference.ground_truth.generate_gt \
 uv run -m inference.ground_truth.generate_gt \
     --sti_experiment_id "674a1b2c3d4e5f6g7h8i9j0k" \
     --mti_experiment_id "674a1b2c3d4e5f6g7h8i9j0l" \
+    --experiment_gt_name "GT_Complete_Llama2_7b" \
     --evaluator_model "gpt-4o-mini-2024-07-18" \
     --seed 42
 ```
@@ -48,6 +50,7 @@ uv run -m inference.ground_truth.generate_gt \
 
 - `--sti_experiment_id`: ID do experimento STI no MongoDB (obrigatório)
 - `--mti_experiment_id`: ID do experimento MTI no MongoDB (obrigatório)
+- `--experiment_gt_name`: Nome do experimento de ground truth (obrigatório)
 - `--evaluator_model`: Modelo usado para avaliação (padrão: "gpt-4o-mini-2024-07-18")
 - `--is_test`: Flag para modo teste (2 instâncias/task)
 - `--seed`: Seed para reprodutibilidade (padrão: 42)
@@ -81,6 +84,7 @@ Cada documento gerado na collection `ground_truth_results` contém:
 
 ```json
 {
+  "experiment_gt_name": "GT_Test_Llama2_7b",
   "sti_experiment_id": ObjectId,
   "mti_experiment_id": ObjectId,
   "task_id": "034",
@@ -152,3 +156,39 @@ Cada documento gerado na collection `ground_truth_results` contém:
 - bson
 
 As dependências são gerenciadas pelo arquivo `pyproject.toml` do projeto.
+
+---
+
+## Deletar Documentos GT
+
+O script `DELETE_GT_TEST.PY` permite deletar documentos de ground truth de duas formas:
+
+### 1. Por ID do Experimento STI
+
+Deleta todos os documentos GT associados a um experimento STI específico:
+
+```bash
+uv run inference/ground_truth/DELETE_GT_TEST.PY --sti_experiment_id "674a1b2c3d4e5f6g7h8i9j0k"
+```
+
+### 2. Por Nome do Experimento GT
+
+Deleta todos os documentos GT com um nome específico:
+
+```bash
+uv run inference/ground_truth/DELETE_GT_TEST.PY --experiment_gt_name "GT_Test_Llama2_7b"
+```
+
+### Saída Esperada
+
+```
+📊 Encontrados 24 documentos GT vinculados ao experimento STI 674a1b2c3d4e5f6g7h8i9j0k
+✅ 24 documentos GT deletados com sucesso!
+
+📋 Resultado:
+{
+  'sti_experiment_id': '674a1b2c3d4e5f6g7h8i9j0k',
+  'gt_documents_deleted': 24,
+  'message': 'Deletados 24 documentos'
+}
+```
