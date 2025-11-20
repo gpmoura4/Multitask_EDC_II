@@ -302,7 +302,8 @@ def create_gt_document(
     instance_id: str,
     sti_answer_doc: Dict,
     mti_answer_doc: Dict,
-    evaluator_model: str
+    evaluator_model: str,
+    experiment_gt_name: str
 ) -> Dict | None:
     """
     Cria um documento de ground truth avaliando respostas STI e MTI.
@@ -378,6 +379,7 @@ def create_gt_document(
     
     # Construir documento
     doc = {
+        "experiment_gt_name": experiment_gt_name,
         "sti_experiment_id": sti_experiment_id,
         "mti_experiment_id": mti_experiment_id,
         "task_id": task_id,
@@ -478,6 +480,12 @@ def main():
         help="Modelo usado para avaliação"
     )
     parser.add_argument(
+        "--experiment_gt_name",
+        type=str,
+        required=True,
+        help="Nome do experimento de ground truth"
+    )
+    parser.add_argument(
         "--is_test",
         action="store_true",
         help="Modo teste: 2 instâncias por task (total 24). Modo real: 20 por task (total 240)"
@@ -515,6 +523,7 @@ def main():
         return
     
     print(f"\n📊 Iniciando geração de Ground Truth")
+    print(f"Experiment GT Name: {args.experiment_gt_name}")
     print(f"STI Experiment: {sti_exp['model_name']} (ID: {args.sti_experiment_id})")
     print(f"MTI Experiment: {mti_exp['model_name']} (ID: {args.mti_experiment_id})")
     print(f"Evaluator Model: {args.evaluator_model}")
@@ -562,7 +571,8 @@ def main():
                     instance_id,
                     sti_answer_doc,
                     mti_answer_doc,
-                    args.evaluator_model
+                    args.evaluator_model,
+                    args.experiment_gt_name
                 )
                 
                 if gt_doc:
