@@ -42,5 +42,5 @@ def delete_experiment_and_answers(experiment_id: str) -> dict:
     }
 
 
-result = delete_experiment_and_answers("691bcd3588fd7235f82ad721")
+result = delete_experiment_and_answers("691e599d5ee53d485ddb1b7a")
 print(result)

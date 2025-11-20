@@ -1,0 +1,5 @@
+experiment_id: 691e1c6995a13e4ee36bd342
+task_id: 034
+stage: s1
+error: Error code: 404 - {'error': {'message': 'The model `meta-llama/llama-2-7b-hf` does not exist or you do not have access to it.', 'type': 'invalid_request_error', 'code': 'model_not_found'}}
+timestamp: 2025-11-19T16:37:20.952455

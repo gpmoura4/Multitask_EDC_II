@@ -227,7 +227,7 @@ if args.is_test:
         # Verificar se a task existe
         if args.test_task_id in data:
             tasks_to_process = [(args.test_task_id, data[args.test_task_id])]
-            print(f"\n🧪 MODO DE TESTE ATIVADO")
+            print(f"\nMODO DE TESTE ATIVADO")
             print(f"Task selecionada: {args.test_task_id}")
         else:
             available_tasks = list(data.keys())[:5]  # Mostrar primeiras 5 tasks
@@ -237,7 +237,7 @@ if args.is_test:
     else:
         # Se não especificou task_id, usar a primeira
         tasks_to_process = list(data.items())[:1]
-        print(f"\n🧪 MODO DE TESTE ATIVADO (primeira task)")
+        print(f"\nMODO DE TESTE ATIVADO (primeira task)")
         print(f"Task selecionada: {tasks_to_process[0][0]}")
     
     total_instances = len(tasks_to_process[0][1]['instance'])
@@ -289,13 +289,13 @@ for k, v in tasks_to_process:
     # Se estiver em modo de teste e test_num_instances for especificado, limitar o número de instâncias
     if args.is_test and args.test_num_instances is not None:
         pending_items = pending_items[:args.test_num_instances]
-        print(f"🧪 MODO TESTE: Limitando a {args.test_num_instances} instâncias")
+        print(f"MODO TESTE: Limitando a {args.test_num_instances} instâncias")
     
     if not pending_items:
         print(f"✅ Nenhuma instância restante para {k}. Pulando...")
         continue
     
-    print(f"🚀 Gerando {len(pending_items)} instâncias restantes para {k}...")
+    print(f" Gerando {len(pending_items)} instâncias restantes para {k}...")
     
     all_new = []
     uids_done = []

@@ -15,6 +15,8 @@ from bson import ObjectId
 from pymongo import MongoClient
 from datetime import datetime
 
+
+
 # Conexão MongoDB (exemplo para teste, substitua pela uri real)
 MONGO_URI = os.getenv("MONGODB_URI")
 
@@ -107,6 +109,7 @@ def create_or_update_answer_document(experiment_id, task_id, instance_id, stage_
         update_data = {
             f"llm_answer.{stage_name}": llm_answer,
             f"generation_time": existing_doc.get("generation_time", 0) + generation_time,
+            "prompt": prompt 
         }
         # f"generation_time": existing_doc.get("generation_time", 0) + generation_time
         # f"generation_time": existing_doc.get("generation_tim-e", 0) + generation_time,
@@ -169,7 +172,7 @@ def create_experiment_record(
             object_id = ObjectId(id)   # converte string → ObjectId
             existing_doc = collection.find_one({"_id": object_id})
         except Exception:
-            print(f"❌ ID '{id}' não é um ObjectId válido. Criando novo experimento.")
+            print(f"ID '{id}' não é um ObjectId válido. Criando novo experimento.")
             existing_doc = None
 
         if existing_doc:
@@ -261,13 +264,13 @@ def generate_missing_instances(stage_name, k_output_dir, k, input_builder_fn, ex
     # Se estiver em modo de teste e test_num_instances for especificado, limitar o número de instâncias
     if args.is_test and args.test_num_instances is not None:
         pending = pending[:args.test_num_instances]
-        print(f"🧪 MODO TESTE: Limitando a {args.test_num_instances} instâncias")
+        print(f" MODO TESTE: Limitando a {args.test_num_instances} instâncias")
     
     if not pending:
         print(f"✅ Nenhuma instância restante para {stage_name} de {k}. Pulando...")
         return existing_df["generation"].tolist() if stage_name != "s3" else None
 
-    print(f"🚀 Gerando {len(pending)} instâncias restantes em {stage_name} para {k}...")
+    print(f"Gerando {len(pending)} instâncias restantes em {stage_name} para {k}...")
 
     all_new = []
     uids_done = []
@@ -292,8 +295,6 @@ def generate_missing_instances(stage_name, k_output_dir, k, input_builder_fn, ex
             if not inputs:
                 continue
 
-            
-
             # Gerar respostas
             generation_time, generated_texts = generate_completions(
                 model,
@@ -314,7 +315,6 @@ def generate_missing_instances(stage_name, k_output_dir, k, input_builder_fn, ex
             for idx, (uid, instance, gen_text, gen_time) in enumerate(zip(valid_uids, valid_instances, generated_texts, generation_time)):
                 # Reconstruir o prompt para salvar no MongoDB
                 prompt = input_builder_fn(uid, instance)
-                
                 # Calcular tokens consumidos (aproximação baseada no texto gerado)
                 # Nota: Para precisão, seria necessário usar o tokenizer
                 consumed_tokens = len(gen_text.split())  # Aproximação simples
@@ -360,7 +360,7 @@ def generate_missing_instances(stage_name, k_output_dir, k, input_builder_fn, ex
         return existing_df["generation"].tolist() if stage_name != "s3" else None
 
     except Exception as e:
-        print(f"❌ Erro durante {stage_name} para {k}: {e}")
+        print(f"Erro durante {stage_name} para {k}: {e}")
         # Salvar checkpoint de erro
         save_error_checkpoint(experiment_id, str(k), stage_name, str(e))
         torch.cuda.empty_cache()
@@ -372,7 +372,7 @@ print("starting evaluation")
 
 experiment_id = create_experiment_record(
     inference_type="STI",
-    experiment_name="STI_Experiment_v1",
+    experiment_name="STI_gpt-4o-mini-2024-07-18_Experiment_test",
     batch_size=args.batch_size,
     save_every=args.save_every,
     model_name=args.model_name,
@@ -402,17 +402,17 @@ if args.is_test:
         # Verificar se a task existe
         if args.test_task_id in data:
             tasks_to_process = [(args.test_task_id, data[args.test_task_id])]
-            print(f"\n🧪 MODO DE TESTE ATIVADO")
+            print(f"\n MODO DE TESTE ATIVADO")
             print(f"Task selecionada: {args.test_task_id}")
         else:
             available_tasks = list(data.keys())[:5]  # Mostrar primeiras 5 tasks
-            print(f"\n❌ ERRO: Task '{args.test_task_id}' não encontrada no dataset.")
+            print(f"\nERRO: Task '{args.test_task_id}' não encontrada no dataset.")
             print(f"Tasks disponíveis (primeiras 5): {', '.join(available_tasks)}")
             exit(1)
     else:
         # Se não especificou task_id, usar a primeira
         tasks_to_process = list(data.items())[:1]
-        print(f"\n🧪 MODO DE TESTE ATIVADO (primeira task)")
+        print(f"\n MODO DE TESTE ATIVADO (primeira task)")
         print(f"Task selecionada: {tasks_to_process[0][0]}")
     
     total_instances = len(tasks_to_process[0][1]['instance'])
@@ -435,32 +435,24 @@ for k, v in tasks_to_process:
     _, s1, s2, s3 = CoT[CoT["tuid"] == int(k)].values[0]
     cot = data[k]["sample"]
 
-    """
-       # Passo 1 
-       Gravar na collection 'experiment_results' o estado inicial do experimento
-       os seguintes campos:
+    """ 
+    cot value:
+        ### Example:
 
-        - inference_type (str) -- "STI" or "MTI"
-        - batch_size (int) (args.batch_size)
-        - save_every (int) (args.save_every)
-        - initial_time (time) -- tempo de início do experimento
-        - final_time (time) -- tempo de término do experimento
-        - total_time (float) -- tempo total gasto no experimento        
-        - type (str) -- "generate_response", "ground_truth", "llm_judge"
-        - llm_params (dict) -- parâmetros usados na geração
-            - tokenizer (str)
-            - model_name (str) (args.model_name)
-            - stop_id_sequences=None,
-            - add_special_tokens=True,
-            - disable_tqdm=False,
-            - max_new_tokens=2048,
-            - min_new_tokens=32,
-            - do_sample=True,
-            - temperature=0.7,
-            - top_p=1.0
-    """
+        \n\n### Instruction: 
+        Read the following passage, and follow the given steps.
+        \n#1: Read through the given text and translate it to German.
+        \n#2: Summarize the text you have translated it step#1.
 
+        \n\n###Text\n Add two small curved lines that form a pointed angle to the right side of the head for the beak.   Draw the snood and the caruncles of the neck using curved strokes. Note that the back portion of the turkey is a little bumpy so you can sketch out a few outlines of the feathers too.    
+
+        \n\n###Answer:
+
+        \n\n###Instruction1:
+
+        \n Zeichne zwei kleine gebogene Linien, die einen spitzen Winkel zur rechten Seite des Kopfes bilden, als Schnabel.   Zeichne den Schnabel und die Karbunkel am Hals aus gebogenen Linien. Beachte, dass der hintere Teil des Truthahns ein wenig rundlich ist, e Struktur als Schwanz an der gebogenen Linie. Zeichne die Augen und definiere den Schnabel. Zeichne den Körper und beachte die Federmuster. Färbe die fächerartige Form des Truthahnschwanzes dunkel. Skizziere und definiere Beine und Krallen. Zeichne zufällige kleine Striche auf dem Körper des Truthahns, damit er federig wirkt. Radiere unnötige Linien weg und verfeinere die Federn mit kleinen, gebogenen Linien. Male die Zeichnung an.\n
     
+    """
 
     # ---------- Etapa 1 ----------
     def build_input_s1(uid, instance):
@@ -470,8 +462,8 @@ for k, v in tasks_to_process:
                 "### Example:\n\n"
                 + "### Instruction: " + cot
                 + "\n\n### Task:\n\n"
-                + "### Instruction: " + reconstruct_instruction(instance, 1, False)
-                + "\n\n### Answer:\n\n"
+                + "### (1) Instruction: " + reconstruct_instruction(instance, 1, False)
+                + "\n\n### Answer [Respond only the Instruction (1)]:\n\n"
             )
         }])
     

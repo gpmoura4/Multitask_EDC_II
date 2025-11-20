@@ -7,7 +7,8 @@ from tqdm import tqdm
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from groq import Groq
 from openai import OpenAI  # nova lib oficial OpenAI 1.x
-
+from dotenv import load_dotenv
+load_dotenv()
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
@@ -93,6 +94,7 @@ def generate_completions(
             return_tensors="pt",
             padding=True,
             truncation=True,
+            max_length=2048,  # Define um tamanho máximo para evitar warnings
             add_special_tokens=add_special_tokens,
         ).to(model.device)
 
@@ -109,6 +111,7 @@ def generate_completions(
                 temperature=temperature,
                 top_p=top_p,
                 pad_token_id=tokenizer.eos_token_id,
+                eos_token_id=tokenizer.eos_token_id,  # Garante que o modelo pare corretamente
             )
 
         if torch.cuda.is_available():
@@ -166,12 +169,12 @@ def load_hf_lm_and_tokenizer(
         return remote, None
 
     # 🔹 Caso 2 – Modelos LLaMA ou Groq → Groq
-    if ("llama" in name_lower) or ("groq" in name_lower) or ("openai/" in name_lower):
+    if ("llama-3.3-70b-versatile" in name_lower) or ("groq" in name_lower) or ("openai/" in name_lower):
         if not GROQ_API_KEY:
             raise ValueError("❌ Variável de ambiente GROQ_API_KEY não encontrada.")
 
         client = Groq(api_key=GROQ_API_KEY)
-        print(f"✅ Usando modelo Groq: {model_name}")
+        print(f" Usando modelo Groq: {model_name}")
 
         remote = RemoteChatModel(client=client, model_name=model_name, provider="groq")
         return remote, None
@@ -189,6 +192,9 @@ def load_hf_lm_and_tokenizer(
     tokenizer = AutoTokenizer.from_pretrained(model_name, use_fast=True)
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
+    
+    # Para modelos decoder-only, padding deve ser à esquerda
+    tokenizer.padding_side = 'left'
 
     model = AutoModelForCausalLM.from_pretrained(
         model_name,
