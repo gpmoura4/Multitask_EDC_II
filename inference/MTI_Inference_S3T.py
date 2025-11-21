@@ -198,7 +198,7 @@ print("starting evaluation")
 # Criar registro do experimento
 experiment_id = create_experiment_record(
     inference_type="MTI",
-    experiment_name="MTI_Experiment_v1",
+    experiment_name="MTI_gpt-4o-mini-2024-07-18_Experiment",
     batch_size=args.batch_size,
     save_every=args.save_every,
     model_name=args.model_name,
@@ -213,7 +213,8 @@ experiment_id = create_experiment_record(
         "do_sample": True,
         "temperature": 0.7,
         "top_p": 1.0
-    }
+    },
+    id="691f07ff79c79aad7e95f16d"
 )
 
 # -------------------------------
