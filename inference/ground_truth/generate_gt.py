@@ -398,7 +398,15 @@ def concatenate_sti_answers(llm_answer: Dict[str, str]) -> str:
     
     for i, stage in enumerate(stages, 1):
         if stage in llm_answer and llm_answer[stage]:
-            result += f"### Instruction{i}:\n\n{llm_answer[stage]}\n\n"
+            answer = llm_answer[stage].strip()
+            
+            # Verificar se a resposta já começa com o prefixo ### Instruction
+            if answer.startswith("### Instruction"):
+                # Resposta já tem o prefixo, não adicionar novamente
+                result += f"{answer}\n\n"
+            else:
+                # Resposta não tem o prefixo, adicionar
+                result += f"### Instruction{i}:\n\n{answer}\n\n"
     
     return result.strip()
 
