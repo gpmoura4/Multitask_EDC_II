@@ -10,11 +10,12 @@ import argparse
 import os
 from bson import ObjectId
 from datetime import datetime
-
+from dotenv import load_dotenv
+load_dotenv()
 from bson import ObjectId
 from pymongo import MongoClient
 from datetime import datetime
-
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
 
 # Conexão MongoDB (exemplo para teste, substitua pela uri real)
@@ -372,7 +373,7 @@ print("starting evaluation")
 
 experiment_id = create_experiment_record(
     inference_type="STI",
-    experiment_name="STI_gpt-4o-mini-2024-07-18_Experiment_test",
+    experiment_name="STI_gpt-4o-mini-2024-07-18_Experiment",
     batch_size=args.batch_size,
     save_every=args.save_every,
     model_name=args.model_name,
@@ -387,9 +388,7 @@ experiment_id = create_experiment_record(
         "do_sample": True,
         "temperature": 0.7,
         "top_p": 1.0
-    },
-    # id (OPCIONAL)
-    id="691e5cdb47cb353cce0b14b0"
+    }
 )
 
 # -------------------------------

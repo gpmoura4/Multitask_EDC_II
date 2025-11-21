@@ -9,6 +9,8 @@ from groq import Groq
 import os
 from openai import OpenAI
 import re
+from dotenv import load_dotenv
+load_dotenv()
 
 # 🔑 API keys
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
