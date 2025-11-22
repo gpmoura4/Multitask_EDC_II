@@ -20,6 +20,8 @@ from bson import ObjectId
 from pymongo import MongoClient
 from typing import List, Dict, Tuple
 from tqdm import tqdm
+import csv
+from pathlib import Path
 
 from evaluate.utils import load_hf_lm_and_tokenizer, generate_completions
 
@@ -383,6 +385,39 @@ def sample_instances(common_instances: Dict[str, List[str]],
     return sampled
 
 
+def save_sampled_instances_to_csv(sampled_instances: Dict[str, List[str]], filename: str) -> None:
+    """
+    Salva o dict sampled_instances em um CSV com colunas: task_id,instance_id
+    """
+    p = Path(filename)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    with p.open("w", newline='', encoding='utf-8') as f:
+        writer = csv.writer(f)
+        writer.writerow(["task_id", "instance_id"])
+        for task_id, instance_list in sampled_instances.items():
+            for instance_id in instance_list:
+                writer.writerow([task_id, instance_id])
+
+
+def load_sampled_instances_from_csv(filename: str) -> Dict[str, List[str]]:
+    """
+    Carrega um CSV (task_id,instance_id) e retorna Dict[task_id, List[instance_id]]
+    """
+    sampled: Dict[str, List[str]] = {}
+    p = Path(filename)
+    if not p.exists():
+        raise FileNotFoundError(f"Sample CSV file not found: {filename}")
+    with p.open("r", newline='', encoding='utf-8') as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            task_id = row.get("task_id")
+            instance_id = row.get("instance_id")
+            if task_id is None or instance_id is None:
+                continue
+            sampled.setdefault(task_id, []).append(instance_id)
+    return sampled
+
+
 def concatenate_sti_answers(llm_answer: Dict[str, str]) -> str:
     """
     Concatena as respostas STI (s1, s2, s3) em um formato legível.
@@ -665,6 +700,25 @@ def main():
         )
     )
     parser.add_argument(
+        "--first_experiment",
+        action="store_true",
+        help=(
+            "Indica que este é o primeiro experimento: a amostra será selecionada aleatoriamente "
+            "e (opcionalmente) salva em CSV. Se você quiser reutilizar a mesma amostra em execuções posteriores, "
+            "execute com --first_experiment --sample_csv_file <file.csv> to save the file."
+        )
+    )
+    parser.add_argument(
+        "--sample_csv_file",
+        type=str,
+        default=None,
+        help=(
+            "Caminho para um CSV de instâncias (task_id,instance_id). "
+            "Se fornecido e existir, será usado como amostra em vez de sortear. "
+            "Se não existir e --first_experiment for usado, o arquivo será criado com a amostra gerada."
+        )
+    )
+    parser.add_argument(
         "--seed",
         type=int,
         default=42,
@@ -709,26 +763,55 @@ def main():
     
     # Amostrar instâncias
     instances_per_task = 2 if args.is_test else 20
+    # If a sample CSV file is provided, prefer that (load if exists).
+    sampled_instances = None
+    if args.sample_csv_file:
+        csv_path = Path(args.sample_csv_file)
+        # Se for uma pasta, cria o arquivo com nome do experimento
+        if csv_path.is_dir() or (not csv_path.suffix and not csv_path.exists()):
+            csv_path = csv_path / f"{args.experiment_gt_name}.csv"
+        # Se for um arquivo sem extensão, adiciona .csv
+        if not csv_path.suffix:
+            csv_path = csv_path.with_suffix(".csv")
+        if csv_path.exists():
+            print(f"🔁 Loading sampled instances from CSV: {csv_path}")
+            sampled_instances = load_sampled_instances_from_csv(str(csv_path))
+        else:
+            # If file doesn't exist but user indicated this is the first experiment,
+            # we will sample and save to the provided path.
+            if args.first_experiment:
+                print(f"🆕 Sample CSV not found. Will sample and save to: {csv_path}")
+                # determine sampled_instances below
+            else:
+                print(f"❌ Sample CSV file not found: {csv_path}. Use --first_experiment to create it or provide an existing file.")
+                return
 
-    # Se estiver em modo teste e o usuário requisitou instâncias pré-definidas,
-    # selecionamos de forma determinística as primeiras N instâncias por task.
-    # Assumimos que ordenar `instance_id` como string é um critério razoável para
-    # escolher as "primeiras" instâncias; ajuste se houver um critério diferente
-    # (por ex., numérico) para os instance_id no seu banco de dados.
-    if args.is_test and getattr(args, "predefined_test", False):
-        sampled_instances = {}
-        for task_id, instance_list in common_instances.items():
-            # ordem determinística
+    # If CSV didn't provide samples, perform sampling (either predefined test or random)
+    if sampled_instances is None:
+        # Se estiver em modo teste e o usuário requisitou instâncias pré-definidas,
+        # selecionamos de forma determinística as primeiras N instâncias por task.
+        if args.is_test and getattr(args, "predefined_test", False):
+            sampled_instances = {}
+            for task_id, instance_list in common_instances.items():
+                # ordem determinística
+                try:
+                    sorted_list = sorted(instance_list)
+                except Exception:
+                    # fallback para a lista original caso não seja ordenável
+                    sorted_list = list(instance_list)
+
+                n = min(instances_per_task, len(sorted_list))
+                sampled_instances[task_id] = sorted_list[:n]
+        else:
+            sampled_instances = sample_instances(common_instances, instances_per_task)
+
+        # Salvar CSV imediatamente após definir a amostra
+        if args.first_experiment and args.sample_csv_file:
             try:
-                sorted_list = sorted(instance_list)
-            except Exception:
-                # fallback para a lista original caso não seja ordenável
-                sorted_list = list(instance_list)
-
-            n = min(instances_per_task, len(sorted_list))
-            sampled_instances[task_id] = sorted_list[:n]
-    else:
-        sampled_instances = sample_instances(common_instances, instances_per_task)
+                save_sampled_instances_to_csv(sampled_instances, str(csv_path))
+                print(f"💾 Sampled instances saved to: {csv_path}")
+            except Exception as e:
+                print(f"⚠️ Erro ao salvar sample CSV: {e}")
     
     total_instances = sum(len(instances) for instances in sampled_instances.values())
     print(f"✅ Amostradas {total_instances} instâncias para avaliação\n")
