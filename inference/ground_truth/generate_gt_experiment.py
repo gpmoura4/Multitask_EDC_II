@@ -19,8 +19,8 @@ load_dotenv()
 MONGO_URI = os.getenv("MONGODB_URI")
 mongo_client = MongoClient(MONGO_URI)
 db = mongo_client["experiments_db"]
-gt_results_collection = db["llm_judge_results"]
-gt_experiments_collection = db["experiments_llm_judge"]
+gt_results_collection = db["ground_truth_results"]
+gt_experiments_collection = db["experiments_ground_truth"]
 
 
 def get_unique_experiment_names() -> List[str]:
