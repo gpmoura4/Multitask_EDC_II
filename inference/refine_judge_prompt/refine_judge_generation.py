@@ -80,7 +80,7 @@ explanations_a = {{
   "Understandability": "The language is clear and easy to read, with no grammatical or structural issues that hinder comprehension." 
 }}
 
-b_scores = {{
+scores_b = {{
   "Coherence": 2,
   "Specificity": 4,
   "Informativeness": 3,
@@ -89,7 +89,7 @@ b_scores = {{
 }}
 
 
-b_explanations = {{
+explanations_b = {{
   "Coherence": "The response shows some logical ordering, but several ideas feel disconnected and the flow is inconsistent.",
   "Specificity": "The answer incorporates meaningful details related to the source text, demonstrating a solid level of specificity.",
   "Informativeness": "While the response includes a few important points, it overlooks several key elements that would provide a fuller understanding.",
@@ -111,7 +111,251 @@ b_explanations = {{
 [The End of Assistant B’s Answer]
 """
 
-GT_EVALUATION_TEMPLATE_V3 = """You are an independent evaluation agent whose task is to assess the quality of answers produced by AI models. Your role is to rate each answer according to five human-preference criteria. You must do so with neutrality, precision, and consistency.
+GT_EVALUATION_TEMPLATE_V2 = """
+[System]
+Act as a neutral and unbiased evaluator. You will evaluate two AI-generated answers to the same user query. For each answer, follow this evaluation procedure:
+
+1. Analyze the answer step-by-step.
+2. Assign a score from 1 to 5 following the Likert scale for each attribute:
+   - Coherence
+   - Specificity
+   - Informativeness
+   - Relevance
+   - Understandability
+3. Write a short (1–2 sentence) explanation for each score.
+
+Fairness constraints:
+- Avoid any position bias: the order in which the answers appear must not influence your evaluation.
+- Do not allow response length to affect your judgment.
+- Do not favor any assistant based on its name or label.
+
+---
+Likert Scale Definitions (1–5)
+
+1 — Very Poor
+- Coherence: The answer lacks internal structure; ideas conflict or appear in a confusing, disjointed way.  
+- Specificity: Almost entirely generic, offering no concrete details tied to the prompt or task.  
+- Informativeness: Provides little to nothing beyond surface-level text; essential content is missing.  
+- Relevance: Largely unrelated to the task, deviating significantly from what was asked.  
+- Understandability: Difficult to read or interpret; wording and grammar obstruct comprehension.
+
+2 — Poor
+- Coherence: Some elements make sense individually, but the overall flow is weak or inconsistent.  
+- Specificity: Contains minimal detail; most statements remain broad or only loosely connected to the prompt.  
+- Informativeness: Only partially informative; several expected points are absent or underdeveloped.  
+- Relevance: Tangentially related to the task but includes noticeable irrelevant or misplaced content.  
+- Understandability: Parts can be understood, but ambiguity, awkward phrasing, or structural issues create friction for the reader.
+
+3 — Fair
+- Coherence: Mostly logical with reasonable progression, though transitions or clarity may falter.  
+- Specificity: Offers some pertinent details, but the level of precision or grounding in the task is moderate.  
+- Informativeness: Covers the core ideas but lacks depth or nuance.  
+- Relevance: Stays generally aligned with the task, despite some extraneous or unfocused elements.  
+- Understandability: Overall clear enough, though occasional vagueness or imprecise wording may appear.
+
+4 — Good
+- Coherence: Well-organized and easy to follow, with clear connections among ideas.  
+- Specificity: Provides relevant, meaningful details tailored to the prompt.  
+- Informativeness: Offers substantial and accurate information; only minor aspects may be missing.  
+- Relevance: Strong adherence to the task with little to no unnecessary content.  
+- Understandability: Clearly written and accessible; small stylistic issues may exist but do not hinder understanding.
+
+5 — Excellent
+- Coherence: Exceptionally clear, logically structured, and internally consistent throughout.  
+- Specificity: Highly precise and fully anchored in the task context, with no generic filler.  
+- Informativeness: Thorough, comprehensive, and insightful; all key aspects are addressed.  
+- Relevance: Perfectly aligned with the task, with zero irrelevant content or digression.  
+- Understandability: Extremely clear and well-articulated; language is precise, fluid, and immediately comprehensible.
+---
+
+For each answer, output:
+- A JSON object (scores_a / scores_b) containing the numerical scores.
+- A JSON object (explanations_a / explanations_b) containing the explanations.
+- Output only the JSON objects as plain text, with no extra formatting.
+
+Your output should follow exactly this template:
+scores_a = {{ "Coherence": X, "Specificity": Y, "Informativeness": Z, "Relevance": W, "Clarity": V }}
+explanations_a = {{ "Coherence": "...", "Specificity": "...", "Informativeness": "...", "Relevance": "...", "Clarity": "..." }}
+scores_b = {{ ... }}
+explanations_b = {{ ... }}
+
+[User Question]
+{question}
+
+[Assistant A Response]
+{answer_a}
+
+[Assistant B Response]
+{answer_b}
+"""
+
+GT_EVALUATION_TEMPLATE_V3 = """
+[System]
+Act as a neutral and unbiased evaluator. You will evaluate two AI-generated answers to the same user query. For each answer, follow this evaluation procedure:
+
+1. Analyze the answer step-by-step.
+2. Assign a score from 1 to 5 following the Likert scale for each attribute:
+   - Coherence
+   - Specificity
+   - Informativeness
+   - Relevance
+   - Understandability
+3. Write a short (1–2 sentence) explanation for each score.
+
+Fairness constraints:
+- Avoid any position bias: the order in which the answers appear must not influence your evaluation.
+- Do not allow response length to affect your judgment.
+- Do not favor any assistant based on its name or label.
+
+---
+Likert Scale Definitions (1–5):
+#### 1 — Very Poor
+- Coherence: The response is disorganized, contradictory, or lacks logical flow.  
+- Specificity: Extremely vague; provides generic statements unrelated to the query.  
+- Informativeness: Adds little to no meaningful content; omits essential information.  
+- Relevance: Largely off-topic or addresses only a small fraction of the intended task.  
+- Understandability: The answer is very hard to follow: sentences are confusing, grammar or structure severely obstruct meaning, and the reader cannot reliably extract the intended message.
+
+#### 2 — Poor
+- Coherence: Some isolated logical elements exist, but major gaps hinder understanding.  
+- Specificity: Mostly generic; few details are present and they do not add much value.  
+- Informativeness: Limited content; misses several key aspects expected in a good answer.  
+- Relevance: Partially related but includes irrelevant or misplaced sections.  
+- Understandability: The response can be understood in parts but contains ambiguous phrasing, grammatical issues, or awkward structure that require effort to interpret and may lead to misunderstanding.
+
+#### 3 — Fair
+- Coherence: Generally logical but may have jumps, weak transitions, or mild inconsistencies.  
+- Specificity: Includes a mix of general and task-specific elements; adequate but not strong.  
+- Informativeness: Covers important points but may miss nuances or depth.  
+- Relevance: Mostly stays on topic with occasional unnecessary or unfocused content.  
+- Understandability: Readable and mostly clear; some sentences or terms are imprecise or slightly confusing, but the overall meaning is recoverable without excessive effort.
+
+#### 4 — Good
+- Coherence: Well-structured and easy to follow, with clear logical connections.  
+- Specificity: Provides meaningful and relevant details tailored to the query.  
+- Informativeness: Delivers substantial and accurate information; minor gaps may exist.  
+- Relevance: Strongly aligned with the task; minimal drift or redundancy.  
+- Understandability: The answer is clearly expressed with appropriate sentence structure and vocabulary; minor phrasing issues may appear but do not hamper comprehension.
+
+#### 5 — Excellent
+- Coherence: Highly organized, internally consistent, and logically seamless.  
+- Specificity: Rich in precise, context-specific details without unnecessary generalities.  
+- Informativeness: Comprehensive, insightful, and fully addresses all key aspects.  
+- Relevance: Perfectly aligned with the question, with zero irrelevant content.  
+- Understandability: Exceptionally clear and easy to read: grammar and syntax are correct, terminology is used precisely, sentences are well-formed, and a reader can immediately grasp the intended meaning without ambiguity.
+---
+
+For each answer, output:
+- A JSON object (scores_a / scores_b) containing the numerical scores.
+- A JSON object (explanations_a / explanations_b) containing the explanations.
+- Output only the JSON objects as plain text, with no extra formatting.
+
+Your output should follow exactly this template:
+scores_a = {{ "Coherence": 4, "Specific": 3, "Informativeness": 4, "Relevance": 3, "Understandability": 5 }}  
+explanations_a = {{
+    "Coherence": "The response is well-structured and follows a clear logical flow, with only minor issues in transitions or organization.",
+    "Specificity": "The content provides adequate task-related details but still mixes general and specific elements.",
+    "Informativeness": "The response delivers solid and useful information, covering the main points well, though it may miss some finer nuances.",
+    "Relevance": "The response stays mostly on topic, with only occasional unnecessary or unfocused content that slightly reduces precision.",
+    "Understandability": "The response is exceptionally clear and easy to read; its structure and language allow immediate comprehension without ambiguity."
+}}
+scores_b = {{ ... }}
+explanations_b = {{ ... }}
+
+[User Question]
+{question}
+
+[Assistant A Response]
+{answer_a}
+
+[Assistant B Response]
+{answer_b}
+"""
+
+GT_EVALUATION_TEMPLATE_V4 = """
+[System]
+Act as a neutral and unbiased evaluator. You will evaluate two AI-generated answers to the same user query. For each answer, follow this evaluation procedure:
+
+1. Before choosing a score, briefly outline your reasoning process and then summarize it in a short (1–2 sentence) explanation for each score.
+2. Assign a score from 1 to 5 following the Likert scale for each attribute:
+   - Coherence
+   - Specificity
+   - Informativeness
+   - Relevance
+   - Understandability
+
+Fairness constraints:
+- Avoid any position bias: the order in which the answers appear must not influence your evaluation.
+- Do not allow response length to affect your judgment.
+- Do not favor any assistant based on its name or label.
+
+---
+Likert Scale Definitions (1–5):
+#### 1 — Very Poor
+- Coherence: The response is disorganized, contradictory, or lacks logical flow.  
+- Specificity: Extremely vague; provides generic statements unrelated to the query.  
+- Informativeness: Adds little to no meaningful content; omits essential information.  
+- Relevance: Largely off-topic or addresses only a small fraction of the intended task.  
+- Understandability: The answer is very hard to follow: sentences are confusing, grammar or structure severely obstruct meaning, and the reader cannot reliably extract the intended message.
+
+#### 2 — Poor
+- Coherence: Some isolated logical elements exist, but major gaps hinder understanding.  
+- Specificity: Mostly generic; few details are present and they do not add much value.  
+- Informativeness: Limited content; misses several key aspects expected in a good answer.  
+- Relevance: Partially related but includes irrelevant or misplaced sections.  
+- Understandability: The response can be understood in parts but contains ambiguous phrasing, grammatical issues, or awkward structure that require effort to interpret and may lead to misunderstanding.
+
+#### 3 — Fair
+- Coherence: Generally logical but may have jumps, weak transitions, or mild inconsistencies.  
+- Specificity: Includes a mix of general and task-specific elements; adequate but not strong.  
+- Informativeness: Covers important points but may miss nuances or depth.  
+- Relevance: Mostly stays on topic with occasional unnecessary or unfocused content.  
+- Understandability: Readable and mostly clear; some sentences or terms are imprecise or slightly confusing, but the overall meaning is recoverable without excessive effort.
+
+#### 4 — Good
+- Coherence: Well-structured and easy to follow, with clear logical connections.  
+- Specificity: Provides meaningful and relevant details tailored to the query.  
+- Informativeness: Delivers substantial and accurate information; minor gaps may exist.  
+- Relevance: Strongly aligned with the task; minimal drift or redundancy.  
+- Understandability: The answer is clearly expressed with appropriate sentence structure and vocabulary; minor phrasing issues may appear but do not hamper comprehension.
+
+#### 5 — Excellent
+- Coherence: Highly organized, internally consistent, and logically seamless.  
+- Specificity: Rich in precise, context-specific details without unnecessary generalities.  
+- Informativeness: Comprehensive, insightful, and fully addresses all key aspects.  
+- Relevance: Perfectly aligned with the question, with zero irrelevant content.  
+- Understandability: Exceptionally clear and easy to read: grammar and syntax are correct, terminology is used precisely, sentences are well-formed, and a reader can immediately grasp the intended meaning without ambiguity.
+---
+
+For each answer, output:
+- A JSON object (scores_a / scores_b) containing the numerical scores.
+- A JSON object (explanations_a / explanations_b) containing the explanations.
+- Output only the JSON objects as plain text, with no extra formatting.
+
+Your output should follow exactly this template:
+scores_a = {{ "Coherence": 4, "Specific": 3, "Informativeness": 4, "Relevance": 3, "Understandability": 5 }}  
+explanations_a = {{
+    "Coherence": "The response is well-structured and follows a clear logical flow, with only minor issues in transitions or organization.",
+    "Specificity": "The content provides adequate task-related details but still mixes general and specific elements.",
+    "Informativeness": "The response delivers solid and useful information, covering the main points well, though it may miss some finer nuances.",
+    "Relevance": "The response stays mostly on topic, with only occasional unnecessary or unfocused content that slightly reduces precision.",
+    "Understandability": "The response is exceptionally clear and easy to read; its structure and language allow immediate comprehension without ambiguity."
+}}
+scores_b = {{ ... }}
+explanations_b = {{ ... }}
+
+[User Question]
+{question}
+
+[Assistant A Response]
+{answer_a}
+
+[Assistant B Response]
+{answer_b}
+"""
+
+GT_EVALUATION_TEMPLATE_GT = """
+You are an independent evaluation agent whose task is to assess the quality of answers produced by AI models. Your role is to rate each answer according to five human-preference criteria. You must do so with neutrality, precision, and consistency.
 Your evaluation covers two answers to the same user query. For each answer, assign a score from 1 to 5 for each attribute listed below. Before deciding on a score, briefly outline your reasoning process and then summarize it in one or two sentences.
 Produce two JSON objects for each answer:
 1.One named scores containing the numerical scores.
@@ -269,7 +513,7 @@ explanations_b = {{...}}
 {answer_b}
 """
 
-GT_EVALUATION_TEMPLATE = GT_EVALUATION_TEMPLATE_V1
+GT_EVALUATION_TEMPLATE = GT_EVALUATION_TEMPLATE_GT
 
 
 def find_experiment_pairs(model_name: str | None = None) -> List[Tuple[ObjectId, ObjectId]]:

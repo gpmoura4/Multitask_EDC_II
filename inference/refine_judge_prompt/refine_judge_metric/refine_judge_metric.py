@@ -383,11 +383,11 @@ def calculate_similarity_for_experiment(experiment_name: str) -> Dict | None:
     # Métricas a serem comparadas
     metrics = ["coherence", "specificity", "informativeness", "relevance", "Understandability"]
     
-    # Listas para armazenar todos os scores
-    mti_gt_scores = []
-    mti_refine_scores = []
-    sti_gt_scores = []
-    sti_refine_scores = []
+    # Estruturas para armazenar scores por métrica
+    mti_gt_by_metric = {metric: [] for metric in metrics}
+    mti_ref_by_metric = {metric: [] for metric in metrics}
+    sti_gt_by_metric = {metric: [] for metric in metrics}
+    sti_ref_by_metric = {metric: [] for metric in metrics}
     
     matched_count = 0
     
@@ -424,11 +424,26 @@ def calculate_similarity_for_experiment(experiment_name: str) -> Dict | None:
             metrics
         )
         
-        # Adicionar às listas
-        mti_gt_scores.extend(mti_gt)
-        mti_refine_scores.extend(mti_refine)
-        sti_gt_scores.extend(sti_gt)
-        sti_refine_scores.extend(sti_refine)
+        # Adicionar às listas por métrica (mantém separação por atributo)
+        for i, metric in enumerate(metrics):
+            # proteção caso listas de scores não tenham todos os elementos
+            try:
+                mti_gt_by_metric[metric].append(mti_gt[i])
+            except Exception:
+                pass
+            try:
+                mti_ref_by_metric[metric].append(mti_refine[i])
+            except Exception:
+                pass
+
+            try:
+                sti_gt_by_metric[metric].append(sti_gt[i])
+            except Exception:
+                pass
+            try:
+                sti_ref_by_metric[metric].append(sti_refine[i])
+            except Exception:
+                pass
     
     print(f"✅ {matched_count} documentos pareados com ground truth")
     
@@ -436,12 +451,41 @@ def calculate_similarity_for_experiment(experiment_name: str) -> Dict | None:
         print("❌ Nenhum documento pareado, não é possível calcular similaridade")
         return None
     
-    # Calcular Cohen's Kappa para MTI e STI
-    mti_kappa = calculate_weighted_cohen_kappa(mti_gt_scores, mti_refine_scores)
-    sti_kappa = calculate_weighted_cohen_kappa(sti_gt_scores, sti_refine_scores)
-    
-    print(f"📈 MTI Cohen's Kappa: {mti_kappa:.4f}")
-    print(f"📈 STI Cohen's Kappa: {sti_kappa:.4f}")
+    # Calcular Cohen's Kappa por métrica e média agregada
+    mti_kappas = {}
+    sti_kappas = {}
+
+    for metric in metrics:
+        gt_list = mti_gt_by_metric.get(metric, [])
+        ref_list = mti_ref_by_metric.get(metric, [])
+        k = calculate_weighted_cohen_kappa(gt_list, ref_list)
+        mti_kappas[metric] = k
+
+        gt_list_s = sti_gt_by_metric.get(metric, [])
+        ref_list_s = sti_ref_by_metric.get(metric, [])
+        k_s = calculate_weighted_cohen_kappa(gt_list_s, ref_list_s)
+        sti_kappas[metric] = k_s
+
+    # Média simples das métricas (ignora métricas sem valores, já que kappa=0.0 em casos inválidos)
+    try:
+        mti_kappa = float(np.mean(list(mti_kappas.values())))
+    except Exception:
+        mti_kappa = 0.0
+
+    try:
+        sti_kappa = float(np.mean(list(sti_kappas.values())))
+    except Exception:
+        sti_kappa = 0.0
+
+    print("📈 MTI Cohen's Kappa por métrica:")
+    for metric, val in mti_kappas.items():
+        print(f"   - {metric}: {val:.4f}")
+    print(f"   -> média MTI: {mti_kappa:.4f}")
+
+    print("📈 STI Cohen's Kappa por métrica:")
+    for metric, val in sti_kappas.items():
+        print(f"   - {metric}: {val:.4f}")
+    print(f"   -> média STI: {sti_kappa:.4f}")
     
     # Pegar o gt_prompt de um documento representativo
     sample_doc = refine_docs[0]
@@ -452,6 +496,8 @@ def calculate_similarity_for_experiment(experiment_name: str) -> Dict | None:
         "prompt": gt_prompt,
         "sti_cohen_kappa": sti_kappa,
         "mti_cohen_kappa": mti_kappa,
+        "sti_cohen_kappa_by_metric": sti_kappas,
+        "mti_cohen_kappa_by_metric": mti_kappas,
         "matched_documents": matched_count,
         "total_documents": len(refine_docs)
     }
@@ -486,31 +532,44 @@ def save_similarity_results(experiment_name: str, results: Dict) -> ObjectId | N
     
     if existing:
         print(f"⚠️ Resultado já existe para '{experiment_name}', atualizando...")
-        
+
+        update_doc = {
+            "prompt": results.get("prompt", ""),
+            "sti_cohen_kappa": results.get("sti_cohen_kappa", 0.0),
+            "mti_cohen_kappa": results.get("mti_cohen_kappa", 0.0),
+            "calculation_timestamp": datetime.now(),
+            "matched_documents": results.get("matched_documents", 0),
+            "total_documents": results.get("total_documents", 0)
+        }
+
+        # incluir resultados por métrica se disponíveis
+        if "sti_cohen_kappa_by_metric" in results:
+            update_doc["sti_cohen_kappa_by_metric"] = results["sti_cohen_kappa_by_metric"]
+        if "mti_cohen_kappa_by_metric" in results:
+            update_doc["mti_cohen_kappa_by_metric"] = results["mti_cohen_kappa_by_metric"]
+
         similarity_results_collection.update_one(
             {"experiment_name": experiment_name},
-            {"$set": {
-                "prompt": results["prompt"],
-                "sti_cohen_kappa": results["sti_cohen_kappa"],
-                "mti_cohen_kappa": results["mti_cohen_kappa"],
-                "calculation_timestamp": datetime.now(),
-                "matched_documents": results["matched_documents"],
-                "total_documents": results["total_documents"]
-            }}
+            {"$set": update_doc}
         )
-        
+
         return existing["_id"]
     
     # Criar novo documento
     similarity_doc = {
         "experiment_name": experiment_name,
-        "prompt": results["prompt"],
-        "sti_cohen_kappa": results["sti_cohen_kappa"],
-        "mti_cohen_kappa": results["mti_cohen_kappa"],
+        "prompt": results.get("prompt", ""),
+        "sti_cohen_kappa": results.get("sti_cohen_kappa", 0.0),
+        "mti_cohen_kappa": results.get("mti_cohen_kappa", 0.0),
         "calculation_timestamp": datetime.now(),
-        "matched_documents": results["matched_documents"],
-        "total_documents": results["total_documents"]
+        "matched_documents": results.get("matched_documents", 0),
+        "total_documents": results.get("total_documents", 0)
     }
+
+    if "sti_cohen_kappa_by_metric" in results:
+        similarity_doc["sti_cohen_kappa_by_metric"] = results["sti_cohen_kappa_by_metric"]
+    if "mti_cohen_kappa_by_metric" in results:
+        similarity_doc["mti_cohen_kappa_by_metric"] = results["mti_cohen_kappa_by_metric"]
     
     result = similarity_results_collection.insert_one(similarity_doc)
     print(f"✅ Resultado salvo com ID: {result.inserted_id}")
@@ -545,7 +604,7 @@ def process_all_experiments() -> Dict[str, Dict]:
             
             if results:
                 # Salvar resultados
-                save_similarity_results(experiment_name, results)
+                # save_similarity_results(experiment_name, results)
                 results_map[experiment_name] = results
             
         except Exception as e:
