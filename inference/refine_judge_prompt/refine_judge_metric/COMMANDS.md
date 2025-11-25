@@ -26,6 +26,43 @@ python inference/refine_judge_prompt/refine_judge_metric/refine_judge_metric.py 
         "refine_judge_gpt-4o-mini-2024-07-18_V2"
 ```
 
+### 🧪 Modo Teste (Instâncias Específicas)
+
+Para calcular similaridade em uma **amostra de N instâncias** (útil para debugging e iteração rápida):
+
+#### PowerShell
+```powershell
+# Teste com 5 instâncias (padrão seed=42)
+python inference/refine_judge_prompt/refine_judge_metric/refine_judge_metric.py `
+    --experiments "refine_judge_gpt-4o-mini-2024-07-18_V4_CORRETO" `
+    --test_instances 5
+
+# Teste com 10 instâncias e seed customizado
+python inference/refine_judge_prompt/refine_judge_metric/refine_judge_metric.py `
+    --experiments "refine_judge_gpt-4o-mini-2024-07-18_V4_CORRETO" `
+    --test_instances 10 `
+    --seed 123
+```
+
+#### Bash
+```bash
+# Teste com 5 instâncias (padrão seed=42)
+python inference/refine_judge_prompt/refine_judge_metric/refine_judge_metric.py \
+    --experiments "refine_judge_gpt-4o-mini-2024-07-18_V4_CORRETO" \
+    --test_instances 5
+
+# Teste com 10 instâncias e seed customizado
+python inference/refine_judge_prompt/refine_judge_metric/refine_judge_metric.py \
+    --experiments "refine_judge_gpt-4o-mini-2024-07-18_V4_CORRETO" \
+    --test_instances 10 \
+    --seed 123
+```
+
+**Detalhes do Modo Teste**:
+- As instâncias selecionadas são salvas em `selected_instances/[experimento]_n[N]_instances.json`
+- Execuções subsequentes **reutilizam** as mesmas instâncias para reprodutibilidade
+- Ver [README_MODO_TESTE.md](README_MODO_TESTE.md) para mais detalhes
+
 ### Processar todos os experimentos
 
 Se você não passar o parâmetro `--experiments`, o script processará **todos** os experimentos encontrados em `refine_judge_results`:
@@ -98,6 +135,8 @@ Total de resultados: 2
 | Parâmetro | Obrigatório | Padrão | Descrição |
 |-----------|-------------|--------|-----------|
 | `--experiments` | ❌ | None (todos) | Lista de nomes de experimentos a processar |
+| `--test_instances` | ❌ | None (todas) | **[NOVO]** Número de instâncias para modo teste (5, 10, 20...) |
+| `--seed` | ❌ | 42 | **[NOVO]** Seed para seleção aleatória no modo teste |
 
 ## 📝 Collection de Saída
 

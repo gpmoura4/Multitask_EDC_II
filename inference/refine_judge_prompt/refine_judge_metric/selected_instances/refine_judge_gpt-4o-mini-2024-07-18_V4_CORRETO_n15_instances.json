@@ -1,0 +1,68 @@
+{
+  "experiment_name": "refine_judge_gpt-4o-mini-2024-07-18_V4_CORRETO",
+  "num_instances": 15,
+  "seed": 42,
+  "selection_timestamp": "2025-11-25T10:14:35.683477",
+  "instances": [
+    {
+      "task_id": "038",
+      "instance_id": "038_54067"
+    },
+    {
+      "task_id": "031",
+      "instance_id": "031_2441"
+    },
+    {
+      "task_id": "030",
+      "instance_id": "030_1633"
+    },
+    {
+      "task_id": "039",
+      "instance_id": "039_33729"
+    },
+    {
+      "task_id": "033",
+      "instance_id": "033_97"
+    },
+    {
+      "task_id": "033",
+      "instance_id": "033_667"
+    },
+    {
+      "task_id": "032",
+      "instance_id": "032_785"
+    },
+    {
+      "task_id": "031",
+      "instance_id": "031_2407"
+    },
+    {
+      "task_id": "039",
+      "instance_id": "039_4821"
+    },
+    {
+      "task_id": "031",
+      "instance_id": "031_2107"
+    },
+    {
+      "task_id": "038",
+      "instance_id": "038_56617"
+    },
+    {
+      "task_id": "041",
+      "instance_id": "041_4176"
+    },
+    {
+      "task_id": "036",
+      "instance_id": "036_7381"
+    },
+    {
+      "task_id": "031",
+      "instance_id": "031_1857"
+    },
+    {
+      "task_id": "037",
+      "instance_id": "037_34435"
+    }
+  ]
+}
