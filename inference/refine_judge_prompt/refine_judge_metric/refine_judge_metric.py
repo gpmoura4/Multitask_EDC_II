@@ -17,6 +17,7 @@ Instalação:
 """
 
 import os
+import argparse
 import numpy as np
 from pymongo import MongoClient
 from bson import ObjectId
@@ -42,14 +43,32 @@ similarity_results_collection = db["refine_judge_similarity_results"]
 
 
 """
-    "Context" - Estou escrevendo um artigo científico que tem como objetivo avaliar a eficiencia das técnicas de Single-Task Inference (STI) e Multi-Task Inference (MTI) com relação à qualidade de respostas de acordo com métricas de preferência humana.
+    "Context" - Estou escrevendo um artigo científico que tem como 
+    objetivo avaliar a eficiencia das técnicas de
+    Single-Task Inference (STI) e Multi-Task Inference (MTI) 
+    com relação à qualidade de respostas de acordo com métricas de preferência humana.
 
-    O Single-Task Inference refere-se a habilidade do LLM de seguir uma instrução por chamada de inferência, ou seja, aborda sub-tarefas sequencialmente . Já o Multi-Task Inference refere-se a habilidade de seguir instruções complexas que lidam com múltiplas sub-tasks em uma única chamada de inferência, ou seja, lidar com tarefas compostas por várias instruções em uma única chamada de inferência.
+    - O Single-Task Inference refere-se a habilidade
+    do LLM de seguir uma instrução por chamada de inferência, ou seja, aborda sub-tarefas sequencialmente
+    - Já o Multi-Task Inference refere-se a habilidade de seguir instruções complexas que lidam com múltiplas sub-tasks em uma única chamada de inferência, ou seja, lidar com tarefas compostas por várias instruções em uma única chamada de inferência.
 
-    As respostas geradas pelo Single-Task Inference e pelo Multi-Task Inference são avalidas com as características: coerência, especificidade, compreensibilidade, informatividade e relevância. Isso será feito para diferentes modelos de linguagem, ou seja, eu vou pedir para que diferentes modelos de linguagem gerem a reposta tanto utilizando a técnica de Single-Task Inference e Multi-Task Inference. E utilizarei um outro modelo de linguagem como juiz para avaliar essas respostas de acordo com as métricas de preferência humana definidas anteriormente. As notas (score) de cada métrica variam de 1 a 5, de acordo com a escala Likert.
+    - As respostas geradas pelo Single-Task Inference e pelo Multi-Task Inference são avalidas com as características: 
+    coerência, especificidade, compreensibilidade, informatividade e relevância.
+    
+    - Isso será feito para diferentes modelos de linguagem, ou seja, 
+    eu vou pedir para que diferentes modelos de linguagem gerem a reposta 
+    tanto utilizando a técnica de Single-Task Inference e Multi-Task Inference. 
+    E utilizarei um outro modelo de linguagem como juiz para avaliar essas respostas 
+    de acordo com as métricas de preferência humana definidas anteriormente. 
+    As notas (score) de cada métrica variam de 1 a 5, de acordo com a escala Likert.
 
 
-    Eu possuo uma base de dados com meu ground truth, isto é, a avaliação esperada para uma resposta de acordo com cada critério que eu defini. A ground truth está em uma coleção do mongodb chamada final_ground_truth, existem 240 documentos nessa collection, sendo 12 tasks, identificadas pelo task_id, onde cada task possui 12 instâncias, identificadas pelo instance_id. Os documentos do ground truth tem o seguinte formato:
+    Eu possuo uma base de dados com meu ground truth, isto é, a avaliação esperada para 
+    uma resposta de acordo com cada critério que eu defini. A ground truth está em uma coleção 
+    do mongodb chamada final_ground_truth, existem 240 documentos nessa collection, sendo 12 tasks,
+    identificadas pelo task_id, onde cada task possui 12 instâncias, identificadas pelo instance_id. 
+    Os documentos do ground truth tem o seguinte formato:
+
     <gt_documents>
     {
     "_id": {
@@ -182,9 +201,23 @@ similarity_results_collection = db["refine_judge_similarity_results"]
     }
     </gt_documents> 
 
-    O documento foi gerado a partir de três avaliações diferentes e então foi realizada uma mediana de cada avaliação para cada um dos 5 critérios, esse valor está armazenado nos campos "median_score" dentro do objeto de cada critério.
+    - O documento foi gerado a partir de três avaliações diferentes e então
+    foi realizada uma mediana de cada avaliação para cada um dos 5 critérios, 
+    esse valor está armazenado nos campos "median_score" dentro do objeto de cada critério.
 
-    Com isso, eu quero definir qual prompt final utilizarei para gerar as avaliações no passo final que é quando o LLM Judge age. Foram selecionadas as mesmas respostas MTI e STI na avaliação ground truth e enviei cada um LLM julgar utilizando os mesmos critérios e características definidas anteriormente, o que foi alterado foi apenas o prompt enviado para esse LLM. O Objetivo avaliar a diferença de cada nota gerada de acordo com cada prompt, verificando assim qual prompt gerou respostas mais semelhantes com o ground_truth.
+    Com isso, eu quero definir qual prompt final utilizarei para gerar as avaliações
+    no passo final que é quando o LLM Judge age.
+    Foram selecionadas as mesmas respostas MTI e STI na avaliação ground truth 
+    e enviei cada um LLM julgar utilizando os mesmos critérios e características
+    definidas anteriormente, o que foi alterado foi apenas o prompt enviado para esse LLM. 
+    O objetivo é avaliar a diferença de cada nota gerada de acordo com cada prompt,
+    verificando assim qual prompt gerou respostas mais semelhantes com o ground_truth.
+
+    O objetivo é verificar qual experimento de refine_judge_results
+    (diferenciado pelo campo experiment_gt_name) gerou notas mais similares com as medianas
+    do ground truth (final_ground_truth) para cada métrica definidam, esse cálculo de 
+    similaridade deve ser feito com a fórmula cohen kappa e ao final deve-se tirar uma média
+    dos valores encontrados.
 
     Esse resultado está armazenado na collection do mongodb refine_judge_results. Cada elemento dessa collection deve ser identificado pelo _id e pelo seu experiment_gt_name, já que tem mais de um experiment_gt_name, pois testei para mais de um prompt. Os documentos dessa coleção tem o seguinte formato:
     <refine_collection>
@@ -256,7 +289,17 @@ similarity_results_collection = db["refine_judge_similarity_results"]
     </refine_collection>
 
 
-    Diante disso, deve-se gerar o resultado de quão similar as notas da etapa da refine_judge_results foram em relação as  medianas de cada métrica dos documentos de final_ground_truth, para assim determinar quais dos experimentos foram mais similares com as notas de ground_truth e quais foram menos similares. A diferença de um experimento na refine_judge_results para outro pode ser identificado pelo campo 'refine_judge_results'. Atualmente, a collection conta com 480 documentos, sendo 240 seguindo a abordagem com o gt_prompt 'A' e 240 seguindo a abordagem com o gt_prompt 'B', cada registro de cada experimento são referentes as mesmas instâncias de cada task da collection 'final_ground_truth'. Os registros do prompt 'A' possuem experiment_gt_name igual a "refine_judge_gpt-4o-mini-2024-07-18_V1" e o do prompt 'B' "refine_judge_gpt-4o-mini-2024-07-18_V2". Considere que podem existir diversos experimentos para além desses dois descritos, a ideia descrita foi só um exemplo de como estão distribuídos os elementos. 
+    Diante disso, deve-se gerar o resultado de quão similar 
+    as notas da etapa da refine_judge_results foram em relação as  
+    medianas de cada métrica dos documentos de final_ground_truth, 
+    para assim determinar quais dos experimentos foram mais similares 
+    com as notas de ground_truth e quais foram menos similares. 
+    A diferença de um experimento na refine_judge_results para outro pode ser
+    identificado pelo campo 'refine_judge_results'. 
+    Atualmente, a collection conta com 480 documentos, 
+    sendo 240 seguindo a abordagem com o gt_prompt 'A'
+    e 240 seguindo a abordagem com o gt_prompt 'B',
+      cada registro de cada experimento são referentes as mesmas instâncias de cada task da collection 'final_ground_truth'. Os registros do prompt 'A' possuem experiment_gt_name igual a "refine_judge_gpt-4o-mini-2024-07-18_V1" e o do prompt 'B' "refine_judge_gpt-4o-mini-2024-07-18_V2". Considere que podem existir diversos experimentos para além desses dois descritos, a ideia descrita foi só um exemplo de como estão distribuídos os elementos. 
 
     Considere que para calcular essa métrica utilizaremos
     a abordagem Weighted Cohen's Kappa para assim verificar o nível de concordância (similaridade) entre as respostas. Ao final, deve-se indicar qual a pontuação de similaridade tanto das notas da abordagem STI quanto MTI referente a um dado experimento específico da collection refine_judge_results.
@@ -429,6 +472,8 @@ def calculate_similarity_for_experiment(experiment_name: str) -> Dict | None:
         mti_refine_scores.extend(mti_refine)
         sti_gt_scores.extend(sti_gt)
         sti_refine_scores.extend(sti_refine)
+
+    
     
     print(f"✅ {matched_count} documentos pareados com ground truth")
     
@@ -436,6 +481,9 @@ def calculate_similarity_for_experiment(experiment_name: str) -> Dict | None:
         print("❌ Nenhum documento pareado, não é possível calcular similaridade")
         return None
     
+    print("🔢 mti_gt_scores...", mti_gt_scores )
+    print("\n🔢 mti_refine_scores...", mti_refine_scores )
+
     # Calcular Cohen's Kappa para MTI e STI
     mti_kappa = calculate_weighted_cohen_kappa(mti_gt_scores, mti_refine_scores)
     sti_kappa = calculate_weighted_cohen_kappa(sti_gt_scores, sti_refine_scores)
@@ -518,20 +566,25 @@ def save_similarity_results(experiment_name: str, results: Dict) -> ObjectId | N
     return result.inserted_id
 
 
-def process_all_experiments() -> Dict[str, Dict]:
+def process_all_experiments(experiment_names: List[str] | None = None) -> Dict[str, Dict]:
     """
     Processa todos os experimentos únicos e calcula similaridade.
+    
+    Args:
+        experiment_names: Lista opcional de nomes de experimentos a processar.
+                         Se None, processa todos os experimentos.
     
     Returns:
         Dict mapeando experiment_name para resultados
     """
-    experiment_names = get_unique_experiment_names()
+    if experiment_names is None:
+        experiment_names = get_unique_experiment_names()
     
     if not experiment_names:
         print("⚠️ Nenhum experimento encontrado na collection refine_judge_results")
         return {}
     
-    print(f"\n📊 Encontrados {len(experiment_names)} experimentos únicos:")
+    print(f"\n📊 Processando {len(experiment_names)} experimento(s):")
     for name in experiment_names:
         print(f"  - {name}")
     print()
@@ -558,12 +611,24 @@ def main():
     """
     Função principal para execução do script.
     """
+    parser = argparse.ArgumentParser(
+        description="Calcula similaridade entre refine_judge_results e final_ground_truth usando Cohen's Kappa"
+    )
+    parser.add_argument(
+        "--experiments",
+        nargs="+",
+        default=None,
+        help="Lista de nomes de experimentos a processar (experiment_gt_name). Se não fornecido, processa todos."
+    )
+    
+    args = parser.parse_args()
+    
     print("\n" + "="*70)
     print("CÁLCULO DE SIMILARIDADE - REFINE JUDGE vs GROUND TRUTH")
     print("="*70)
     
-    # Processar todos os experimentos
-    results_map = process_all_experiments()
+    # Processar experimentos
+    results_map = process_all_experiments(args.experiments)
     
     if results_map:
         print("\n" + "="*70)

@@ -395,6 +395,7 @@ def main():
         print(f"  STI: {sti_exp['model_name']}")
         print(f"  MTI: {mti_exp['model_name']}")
     
+    # pegando o que ja foi setado no experimento mti (gpt4o-mini)
     evaluator_model = mti_exp["model_name"]
     
     print("\n" + "="*70)
