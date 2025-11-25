@@ -1,0 +1,28 @@
+{
+  "experiment_name": "refine_judge_gpt-4o-mini-2024-07-18_V4_CORRETO",
+  "num_instances": 5,
+  "seed": 42,
+  "selection_timestamp": "2025-11-25T09:52:55.478176",
+  "instances": [
+    {
+      "task_id": "038",
+      "instance_id": "038_54067"
+    },
+    {
+      "task_id": "031",
+      "instance_id": "031_2441"
+    },
+    {
+      "task_id": "030",
+      "instance_id": "030_1633"
+    },
+    {
+      "task_id": "039",
+      "instance_id": "039_33729"
+    },
+    {
+      "task_id": "033",
+      "instance_id": "033_97"
+    }
+  ]
+}

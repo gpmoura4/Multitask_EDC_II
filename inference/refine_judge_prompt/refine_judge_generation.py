@@ -1,3 +1,14 @@
+"""
+Script para geração de Ground Truth (GT) a partir de experimentos STI e MTI.
+
+Este script:
+1. Seleciona pares de experimentos STI/MTI com o mesmo model_name
+2. Amostra instâncias para avaliação (modo teste: 24 instâncias/12 tasks, modo real: 240 instâncias/12 tasks)
+3. Constrói prompts de avaliação combinando respostas STI e MTI
+4. Envia para LLM (GPT-4o-mini) para avaliação de qualidade
+5. Salva resultados na collection 'ground_truth_results'
+"""
+
 from __future__ import annotations
 
 import json
@@ -9,6 +20,8 @@ from bson import ObjectId
 from pymongo import MongoClient
 from typing import List, Dict, Tuple
 from tqdm import tqdm
+import csv
+from pathlib import Path
 
 from evaluate.utils import load_hf_lm_and_tokenizer, generate_completions
 
@@ -19,34 +32,154 @@ mongo_client = MongoClient(MONGO_URI)
 db = mongo_client["experiments_db"]
 experiment_collection = db["experiment_results"]
 answer_collection = db["answer_results"]
-gt_collection = db["llm_judge_results"]
+gt_collection = db["refine_judge_results"]
 
 
 # Template de prompt para avaliação
-GT_EVALUATION_TEMPLATE_V1 = """You are an independent evaluation agent whose task is to assess the quality of answers produced by AI models. Your role is to rate each answer according to five human-preference criteria. You must do so with neutrality, precision, and consistency.
+GT_EVALUATION_TEMPLATE_V1 = """Please act as an impartial judge and evaluate the quality of the responses provided by two AI assistants to the user question displayed below. Given the following user question and answers, please assign a score from 1(worst) to 5(best) following the Likert scale for each attribute listed below. For each attribute, begin your evaluation thinking step by step and providing a short explanation. The evaluation should be generated for the two provided responses. Avoid any position biases and ensure that the order in which the responses were presented does not influence your decision. Do not allow the length of the responses to influence your evaluation. Do not favor certain names of the assistants.
 
-Your evaluation covers two answers to the same user query. For each answer, assign a score from 1 to 5 for each attribute listed below. Before deciding on a score, briefly outline your reasoning process and then summarize it in one or two sentences.
+For each provided response, please return your answer in two JSON:
 
-Produce two JSON objects for each answer:
-1. One named scores containing the numerical scores.
-2. One named explanations containing your concise rationales.
+- One called scores where each key is the name of the attribute and the value is the score (a int between 1 and 5).  
+- One called explanations where each key is the name of the attribute and the value is your explanation (1-2 sentences) for that score.
 
-Output only the JSON objects as plain text, without markdown, comments, or extra formatting.
+Please output the JSONs as plain text only, do not include code blocks, markdown, or any extra formatting.
 
-Evaluation Attributes (definitions):
-- Coherence: Degree to which ideas are logically arranged and internally consistent.
-- Specificity: Extent to which the response avoids generic statements and addresses details relevant to the prompt.
-- Informativeness: How much meaningful and useful content the answer provides relative to the question.
-- Relevance: How closely the answer stays on topic and avoids unnecessary digressions.
-- Understandability: The answer is clearly expressed with appropriate sentence structure and vocabulary.
+Here are the attributes and their definitions:
+
+Coherence:
+How much does the generated text make sense?
+
+Specificity:
+Is the generated text generic or specific to the source text?
+
+Informativeness:
+How well does the generated text capture the key ideas of its source text?
+
+Relevance:
+How well is the generated text relevant to its source text?
+
+Understandability:
+Is the generated text understandable?
+
+Example output format:  
+
+scores_a = {{ 
+  "Coherence": 5, 
+  "Specificity": 3, 
+  "Informativeness": 4, 
+  "Relevance": 2, 
+  "Understandability": 5 
+}}  
+
+explanations_a = {{ 
+  "Coherence": "The text flows logically, with ideas that connect naturally and transitions that make sense throughout.", 
+  "Specificity": "The response includes some details tied to the source text, but still contains a few general or vague statements.", 
+  "Informativeness": "The text captures most of the key ideas from the source, though a few secondary points are missing.", 
+  "Relevance": "Some parts of the generated text deviate from the main topic, introducing information that isn’t directly related to the source.", 
+  "Understandability": "The language is clear and easy to read, with no grammatical or structural issues that hinder comprehension." 
+}}
+
+scores_b = {{
+  "Coherence": 2,
+  "Specificity": 4,
+  "Informativeness": 3,
+  "Relevance": 1,
+  "Understandability": 4
+}}
+
+
+explanations_b = {{
+  "Coherence": "The response shows some logical ordering, but several ideas feel disconnected and the flow is inconsistent.",
+  "Specificity": "The answer incorporates meaningful details related to the source text, demonstrating a solid level of specificity.",
+  "Informativeness": "While the response includes a few important points, it overlooks several key elements that would provide a fuller understanding.",
+  "Relevance": "A significant portion of the content strays from the original topic, introducing information that does not align with the source material.",
+  "Understandability": "The text is mostly clear and readable, with only minor phrasing issues that slightly disrupt comprehension."
+}}
+
+
+
+[User Question]
+{{question}}
+
+[The Start of Assistant A’s Answer]
+{{answer_a}} 
+[The End of Assistant A’s Answer]
+  
+[The Start of Assistant B’s Answer] 
+{{answer_b}} 
+[The End of Assistant B’s Answer]
+"""
+
+GT_EVALUATION_TEMPLATE_V2 = """
+[System]
+Act as a neutral and unbiased evaluator. You will evaluate two AI-generated answers to the same user query. For each answer, follow this evaluation procedure:
+
+1. Analyze the answer step-by-step.
+2. Assign a score from 1 to 5 following the Likert scale for each attribute:
+   - Coherence
+   - Specificity
+   - Informativeness
+   - Relevance
+   - Understandability
+3. Write a short (1–2 sentence) explanation for each score.
+
+Fairness constraints:
+- Avoid any position bias: the order in which the answers appear must not influence your evaluation.
+- Do not allow response length to affect your judgment.
+- Do not favor any assistant based on its name or label.
+
+---
+Likert Scale Definitions (1–5)
+
+1 — Very Poor
+- Coherence: The answer lacks internal structure; ideas conflict or appear in a confusing, disjointed way.  
+- Specificity: Almost entirely generic, offering no concrete details tied to the prompt or task.  
+- Informativeness: Provides little to nothing beyond surface-level text; essential content is missing.  
+- Relevance: Largely unrelated to the task, deviating significantly from what was asked.  
+- Understandability: Difficult to read or interpret; wording and grammar obstruct comprehension.
+
+2 — Poor
+- Coherence: Some elements make sense individually, but the overall flow is weak or inconsistent.  
+- Specificity: Contains minimal detail; most statements remain broad or only loosely connected to the prompt.  
+- Informativeness: Only partially informative; several expected points are absent or underdeveloped.  
+- Relevance: Tangentially related to the task but includes noticeable irrelevant or misplaced content.  
+- Understandability: Parts can be understood, but ambiguity, awkward phrasing, or structural issues create friction for the reader.
+
+3 — Fair
+- Coherence: Mostly logical with reasonable progression, though transitions or clarity may falter.  
+- Specificity: Offers some pertinent details, but the level of precision or grounding in the task is moderate.  
+- Informativeness: Covers the core ideas but lacks depth or nuance.  
+- Relevance: Stays generally aligned with the task, despite some extraneous or unfocused elements.  
+- Understandability: Overall clear enough, though occasional vagueness or imprecise wording may appear.
+
+4 — Good
+- Coherence: Well-organized and easy to follow, with clear connections among ideas.  
+- Specificity: Provides relevant, meaningful details tailored to the prompt.  
+- Informativeness: Offers substantial and accurate information; only minor aspects may be missing.  
+- Relevance: Strong adherence to the task with little to no unnecessary content.  
+- Understandability: Clearly written and accessible; small stylistic issues may exist but do not hinder understanding.
+
+5 — Excellent
+- Coherence: Exceptionally clear, logically structured, and internally consistent throughout.  
+- Specificity: Highly precise and fully anchored in the task context, with no generic filler.  
+- Informativeness: Thorough, comprehensive, and insightful; all key aspects are addressed.  
+- Relevance: Perfectly aligned with the task, with zero irrelevant content or digression.  
+- Understandability: Extremely clear and well-articulated; language is precise, fluid, and immediately comprehensible.
+---
+
+For each answer, output:
+- A JSON object (scores_a / scores_b) containing the numerical scores.
+- A JSON object (explanations_a / explanations_b) containing the explanations.
+- Output only the JSON objects as plain text, with no extra formatting.
 
 Your output should follow exactly this template:
-scores_a = {{"Coherence": X, "Specificity": Y, "Informativeness": Z, "Relevance": W, "Understandability": V}}
-explanations_a = {{"Coherence": "...", "Specificity": "...", "Informativeness": "...", "Relevance": "...", "Understandability": "..."}}
-scores_b = {{...}}
-explanations_b = {{...}}
+scores_a = {{ "Coherence": X, "Specificity": Y, "Informativeness": Z, "Relevance": W, "Clarity": V }}
+explanations_a = {{ "Coherence": "...", "Specificity": "...", "Informativeness": "...", "Relevance": "...", "Clarity": "..." }}
+scores_b = {{ ... }}
+explanations_b = {{ ... }}
 
-[User Input]
+[User Question]
 {question}
 
 [Assistant A Response]
@@ -56,14 +189,24 @@ explanations_b = {{...}}
 {answer_b}
 """
 
-GT_EVALUATION_TEMPLATE_V2 = """You are an independent evaluation agent whose task is to assess the quality of answers produced by AI models. Your role is to rate each answer according to five human-preference criteria. You must do so with neutrality, precision, and consistency.
-Your evaluation covers two answers to the same user query. For each answer, assign a score from 1 to 5 for each attribute listed below. Before deciding on a score, briefly outline your reasoning process and then summarize it in one or two sentences.
-Produce two JSON objects for each answer:
-1.One named scores containing the numerical scores.
-2.One named explanations containing your concise rationales.
+GT_EVALUATION_TEMPLATE_V3 = """
+[System]
+Act as a neutral and unbiased evaluator. You will evaluate two AI-generated answers to the same user query. For each answer, follow this evaluation procedure:
 
+1. Analyze the answer step-by-step.
+2. Assign a score from 1 to 5 following the Likert scale for each attribute:
+   - Coherence
+   - Specificity
+   - Informativeness
+   - Relevance
+   - Understandability
+3. Write a short (1–2 sentence) explanation for each score.
 
-Output only the JSON objects as plain text, without markdown, comments, or extra formatting.
+Fairness constraints:
+- Avoid any position bias: the order in which the answers appear must not influence your evaluation.
+- Do not allow response length to affect your judgment.
+- Do not favor any assistant based on its name or label.
+
 ---
 Likert Scale Definitions (1–5):
 #### 1 — Very Poor
@@ -101,13 +244,25 @@ Likert Scale Definitions (1–5):
 - Relevance: Perfectly aligned with the question, with zero irrelevant content.  
 - Understandability: Exceptionally clear and easy to read: grammar and syntax are correct, terminology is used precisely, sentences are well-formed, and a reader can immediately grasp the intended meaning without ambiguity.
 ---
-Your output should follow exactly this template:
-scores_a = {{"Coherence": X, "Specificity": Y, "Informativeness": Z, "Relevance": W, "Understandability": V}}
-explanations_a = {{"Coherence": "...", "Specificity": "...", "Informativeness": "...", "Relevance": "...", "Understandability": "..."}}
-scores_b = {{...}}
-explanations_b = {{...}}
 
-[User Input]
+For each answer, output:
+- A JSON object (scores_a / scores_b) containing the numerical scores.
+- A JSON object (explanations_a / explanations_b) containing the explanations.
+- Output only the JSON objects as plain text, with no extra formatting.
+
+Your output should follow exactly this template:
+scores_a = {{ "Coherence": 4, "Specific": 3, "Informativeness": 4, "Relevance": 3, "Understandability": 5 }}  
+explanations_a = {{
+    "Coherence": "The response is well-structured and follows a clear logical flow, with only minor issues in transitions or organization.",
+    "Specificity": "The content provides adequate task-related details but still mixes general and specific elements.",
+    "Informativeness": "The response delivers solid and useful information, covering the main points well, though it may miss some finer nuances.",
+    "Relevance": "The response stays mostly on topic, with only occasional unnecessary or unfocused content that slightly reduces precision.",
+    "Understandability": "The response is exceptionally clear and easy to read; its structure and language allow immediate comprehension without ambiguity."
+}}
+scores_b = {{ ... }}
+explanations_b = {{ ... }}
+
+[User Question]
 {question}
 
 [Assistant A Response]
@@ -117,7 +272,90 @@ explanations_b = {{...}}
 {answer_b}
 """
 
-GT_EVALUATION_TEMPLATE_V3 = """You are an independent evaluation agent whose task is to assess the quality of answers produced by AI models. Your role is to rate each answer according to five human-preference criteria. You must do so with neutrality, precision, and consistency.
+GT_EVALUATION_TEMPLATE_V4 = """
+[System]
+Act as a neutral and unbiased evaluator. You will evaluate two AI-generated answers to the same user query. For each answer, follow this evaluation procedure:
+
+1. Before choosing a score, briefly outline your reasoning process and then summarize it in a short (1–2 sentence) explanation for each score.
+2. Assign a score from 1 to 5 following the Likert scale for each attribute:
+   - Coherence
+   - Specificity
+   - Informativeness
+   - Relevance
+   - Understandability
+
+Fairness constraints:
+- Avoid any position bias: the order in which the answers appear must not influence your evaluation.
+- Do not allow response length to affect your judgment.
+- Do not favor any assistant based on its name or label.
+
+---
+Likert Scale Definitions (1–5):
+#### 1 — Very Poor
+- Coherence: The response is disorganized, contradictory, or lacks logical flow.  
+- Specificity: Extremely vague; provides generic statements unrelated to the query.  
+- Informativeness: Adds little to no meaningful content; omits essential information.  
+- Relevance: Largely off-topic or addresses only a small fraction of the intended task.  
+- Understandability: The answer is very hard to follow: sentences are confusing, grammar or structure severely obstruct meaning, and the reader cannot reliably extract the intended message.
+
+#### 2 — Poor
+- Coherence: Some isolated logical elements exist, but major gaps hinder understanding.  
+- Specificity: Mostly generic; few details are present and they do not add much value.  
+- Informativeness: Limited content; misses several key aspects expected in a good answer.  
+- Relevance: Partially related but includes irrelevant or misplaced sections.  
+- Understandability: The response can be understood in parts but contains ambiguous phrasing, grammatical issues, or awkward structure that require effort to interpret and may lead to misunderstanding.
+
+#### 3 — Fair
+- Coherence: Generally logical but may have jumps, weak transitions, or mild inconsistencies.  
+- Specificity: Includes a mix of general and task-specific elements; adequate but not strong.  
+- Informativeness: Covers important points but may miss nuances or depth.  
+- Relevance: Mostly stays on topic with occasional unnecessary or unfocused content.  
+- Understandability: Readable and mostly clear; some sentences or terms are imprecise or slightly confusing, but the overall meaning is recoverable without excessive effort.
+
+#### 4 — Good
+- Coherence: Well-structured and easy to follow, with clear logical connections.  
+- Specificity: Provides meaningful and relevant details tailored to the query.  
+- Informativeness: Delivers substantial and accurate information; minor gaps may exist.  
+- Relevance: Strongly aligned with the task; minimal drift or redundancy.  
+- Understandability: The answer is clearly expressed with appropriate sentence structure and vocabulary; minor phrasing issues may appear but do not hamper comprehension.
+
+#### 5 — Excellent
+- Coherence: Highly organized, internally consistent, and logically seamless.  
+- Specificity: Rich in precise, context-specific details without unnecessary generalities.  
+- Informativeness: Comprehensive, insightful, and fully addresses all key aspects.  
+- Relevance: Perfectly aligned with the question, with zero irrelevant content.  
+- Understandability: Exceptionally clear and easy to read: grammar and syntax are correct, terminology is used precisely, sentences are well-formed, and a reader can immediately grasp the intended meaning without ambiguity.
+---
+
+For each answer, output:
+- A JSON object (scores_a / scores_b) containing the numerical scores.
+- A JSON object (explanations_a / explanations_b) containing the explanations.
+- Output only the JSON objects as plain text, with no extra formatting.
+
+Your output should follow exactly this template:
+scores_a = {{ "Coherence": 4, "Specific": 3, "Informativeness": 4, "Relevance": 3, "Understandability": 5 }}  
+explanations_a = {{
+    "Coherence": "The response is well-structured and follows a clear logical flow, with only minor issues in transitions or organization.",
+    "Specificity": "The content provides adequate task-related details but still mixes general and specific elements.",
+    "Informativeness": "The response delivers solid and useful information, covering the main points well, though it may miss some finer nuances.",
+    "Relevance": "The response stays mostly on topic, with only occasional unnecessary or unfocused content that slightly reduces precision.",
+    "Understandability": "The response is exceptionally clear and easy to read; its structure and language allow immediate comprehension without ambiguity."
+}}
+scores_b = {{ ... }}
+explanations_b = {{ ... }}
+
+[User Question]
+{question}
+
+[Assistant A Response]
+{answer_a}
+
+[Assistant B Response]
+{answer_b}
+"""
+
+GT_EVALUATION_TEMPLATE_GT = """
+You are an independent evaluation agent whose task is to assess the quality of answers produced by AI models. Your role is to rate each answer according to five human-preference criteria. You must do so with neutrality, precision, and consistency.
 Your evaluation covers two answers to the same user query. For each answer, assign a score from 1 to 5 for each attribute listed below. Before deciding on a score, briefly outline your reasoning process and then summarize it in one or two sentences.
 Produce two JSON objects for each answer:
 1.One named scores containing the numerical scores.
@@ -275,7 +513,7 @@ explanations_b = {{...}}
 {answer_b}
 """
 
-GT_EVALUATION_TEMPLATE = GT_EVALUATION_TEMPLATE_V3
+GT_EVALUATION_TEMPLATE = GT_EVALUATION_TEMPLATE_GT
 
 
 def find_experiment_pairs(model_name: str | None = None) -> List[Tuple[ObjectId, ObjectId]]:
@@ -369,6 +607,39 @@ def sample_instances(common_instances: Dict[str, List[str]],
         n_samples = min(instances_per_task, len(instance_list))
         sampled[task_id] = random.sample(instance_list, n_samples)
     
+    return sampled
+
+
+def save_sampled_instances_to_csv(sampled_instances: Dict[str, List[str]], filename: str) -> None:
+    """
+    Salva o dict sampled_instances em um CSV com colunas: task_id,instance_id
+    """
+    p = Path(filename)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    with p.open("w", newline='', encoding='utf-8') as f:
+        writer = csv.writer(f)
+        writer.writerow(["task_id", "instance_id"])
+        for task_id, instance_list in sampled_instances.items():
+            for instance_id in instance_list:
+                writer.writerow([task_id, instance_id])
+
+
+def load_sampled_instances_from_csv(filename: str) -> Dict[str, List[str]]:
+    """
+    Carrega um CSV (task_id,instance_id) e retorna Dict[task_id, List[instance_id]]
+    """
+    sampled: Dict[str, List[str]] = {}
+    p = Path(filename)
+    if not p.exists():
+        raise FileNotFoundError(f"Sample CSV file not found: {filename}")
+    with p.open("r", newline='', encoding='utf-8') as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            task_id = row.get("task_id")
+            instance_id = row.get("instance_id")
+            if task_id is None or instance_id is None:
+                continue
+            sampled.setdefault(task_id, []).append(instance_id)
     return sampled
 
 
@@ -654,6 +925,25 @@ def main():
         )
     )
     parser.add_argument(
+        "--first_experiment",
+        action="store_true",
+        help=(
+            "Indica que este é o primeiro experimento: a amostra será selecionada aleatoriamente "
+            "e (opcionalmente) salva em CSV. Se você quiser reutilizar a mesma amostra em execuções posteriores, "
+            "execute com --first_experiment --sample_csv_file <file.csv> to save the file."
+        )
+    )
+    parser.add_argument(
+        "--sample_csv_file",
+        type=str,
+        default=None,
+        help=(
+            "Caminho para um CSV de instâncias (task_id,instance_id). "
+            "Se fornecido e existir, será usado como amostra em vez de sortear. "
+            "Se não existir e --first_experiment for usado, o arquivo será criado com a amostra gerada."
+        )
+    )
+    parser.add_argument(
         "--seed",
         type=int,
         default=42,
@@ -698,26 +988,55 @@ def main():
     
     # Amostrar instâncias
     instances_per_task = 2 if args.is_test else 20
+    # If a sample CSV file is provided, prefer that (load if exists).
+    sampled_instances = None
+    if args.sample_csv_file:
+        csv_path = Path(args.sample_csv_file)
+        # Se for uma pasta, cria o arquivo com nome do experimento
+        if csv_path.is_dir() or (not csv_path.suffix and not csv_path.exists()):
+            csv_path = csv_path / f"{args.experiment_gt_name}.csv"
+        # Se for um arquivo sem extensão, adiciona .csv
+        if not csv_path.suffix:
+            csv_path = csv_path.with_suffix(".csv")
+        if csv_path.exists():
+            print(f"🔁 Loading sampled instances from CSV: {csv_path}")
+            sampled_instances = load_sampled_instances_from_csv(str(csv_path))
+        else:
+            # If file doesn't exist but user indicated this is the first experiment,
+            # we will sample and save to the provided path.
+            if args.first_experiment:
+                print(f"🆕 Sample CSV not found. Will sample and save to: {csv_path}")
+                # determine sampled_instances below
+            else:
+                print(f"❌ Sample CSV file not found: {csv_path}. Use --first_experiment to create it or provide an existing file.")
+                return
 
-    # Se estiver em modo teste e o usuário requisitou instâncias pré-definidas,
-    # selecionamos de forma determinística as primeiras N instâncias por task.
-    # Assumimos que ordenar `instance_id` como string é um critério razoável para
-    # escolher as "primeiras" instâncias; ajuste se houver um critério diferente
-    # (por ex., numérico) para os instance_id no seu banco de dados.
-    if args.is_test and getattr(args, "predefined_test", False):
-        sampled_instances = {}
-        for task_id, instance_list in common_instances.items():
-            # ordem determinística
+    # If CSV didn't provide samples, perform sampling (either predefined test or random)
+    if sampled_instances is None:
+        # Se estiver em modo teste e o usuário requisitou instâncias pré-definidas,
+        # selecionamos de forma determinística as primeiras N instâncias por task.
+        if args.is_test and getattr(args, "predefined_test", False):
+            sampled_instances = {}
+            for task_id, instance_list in common_instances.items():
+                # ordem determinística
+                try:
+                    sorted_list = sorted(instance_list)
+                except Exception:
+                    # fallback para a lista original caso não seja ordenável
+                    sorted_list = list(instance_list)
+
+                n = min(instances_per_task, len(sorted_list))
+                sampled_instances[task_id] = sorted_list[:n]
+        else:
+            sampled_instances = sample_instances(common_instances, instances_per_task)
+
+        # Salvar CSV imediatamente após definir a amostra
+        if args.first_experiment and args.sample_csv_file:
             try:
-                sorted_list = sorted(instance_list)
-            except Exception:
-                # fallback para a lista original caso não seja ordenável
-                sorted_list = list(instance_list)
-
-            n = min(instances_per_task, len(sorted_list))
-            sampled_instances[task_id] = sorted_list[:n]
-    else:
-        sampled_instances = sample_instances(common_instances, instances_per_task)
+                save_sampled_instances_to_csv(sampled_instances, str(csv_path))
+                print(f"💾 Sampled instances saved to: {csv_path}")
+            except Exception as e:
+                print(f"⚠️ Erro ao salvar sample CSV: {e}")
     
     total_instances = sum(len(instances) for instances in sampled_instances.values())
     print(f"✅ Amostradas {total_instances} instâncias para avaliação\n")
@@ -766,7 +1085,7 @@ def main():
     
     # Salvar documentos no MongoDB
     if gt_documents:
-        print(f"\n💾 Salvando {len(gt_documents)} documentos na collection 'ground_truth_results'...")
+        print(f"\n💾 Salvando {len(gt_documents)} documentos na collection...")
         result = gt_collection.insert_many(gt_documents)
         print(f"✅ {len(result.inserted_ids)} documentos inseridos com sucesso!")
     else:
