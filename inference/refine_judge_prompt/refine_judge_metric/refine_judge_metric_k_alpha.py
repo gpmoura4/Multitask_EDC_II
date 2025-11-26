@@ -62,7 +62,7 @@ mongo_client = MongoClient(MONGO_URI)
 db = mongo_client["experiments_db"]
 refine_judge_collection = db["refine_judge_results"]
 final_gt_collection = db["final_ground_truth"]
-similarity_results_collection = db["refine_judge_similarity_k_alpha"]
+similarity_results_collection = db["refine_judge_similarity_k_alpha_test"]
 
 # Diretório para armazenar arquivos de instâncias selecionadas
 INSTANCES_DIR = Path(__file__).parent / "selected_instances"
@@ -573,17 +573,25 @@ def save_similarity_results(experiment_name: str, results: Dict) -> ObjectId | N
 
         update_doc = {
             "prompt": results.get("prompt", ""),
-            "sti_k_alpha": results.get("sti_k_alpha", 0.0),
-            "mti_k_alpha": results.get("mti_k_alpha", 0.0),
-            "sti_k_alpha_by_metric": results.get("sti_k_alpha_by_metric", {}),
-            "mti_k_alpha_by_metric": results.get("mti_k_alpha_by_metric", {}),
-            "sti_exact_match_percentage": results.get("sti_exact_match_percentage", 0.0),
-            "mti_exact_match_percentage": results.get("mti_exact_match_percentage", 0.0),
-            "sti_exact_match_percentage_by_metric": results.get("sti_exact_match_percentage_by_metric", {}),
-            "mti_exact_match_percentage_by_metric": results.get("mti_exact_match_percentage_by_metric", {}),
+            "sti_k_alpha": round(results.get("sti_k_alpha", 0.0), 3),
+            "mti_k_alpha": round(results.get("mti_k_alpha", 0.0), 3),
+            "sti_k_alpha_by_metric": {
+            metric: round(value, 3) for metric, value in results.get("sti_k_alpha_by_metric", {}).items()
+            },
+            "mti_k_alpha_by_metric": {
+                metric: round(value, 3) for metric, value in results.get("mti_k_alpha_by_metric", {}).items()
+            },
+            "sti_exact_match_percentage": round(results.get("sti_exact_match_percentage", 0.0), 3),
+            "mti_exact_match_percentage": round(results.get("mti_exact_match_percentage", 0.0), 3),
+            "sti_exact_match_percentage_by_metric": {
+                metric: round(value, 3) for metric, value in results.get("sti_exact_match_percentage_by_metric", {}).items()
+            },
+            "mti_exact_match_percentage_by_metric": {
+                metric: round(value, 3) for metric, value in results.get("mti_exact_match_percentage_by_metric", {}).items()
+            },
             "calculation_timestamp": datetime.now(),
-            "matched_documents": results.get("matched_documents", 0),
-            "total_documents": results.get("total_documents", 0)
+            "matched_documents": round(results.get("matched_documents", 0), 3),
+            "total_documents": round(results.get("total_documents", 0), 3)
         }
 
         similarity_results_collection.update_one(
@@ -597,14 +605,23 @@ def save_similarity_results(experiment_name: str, results: Dict) -> ObjectId | N
     similarity_doc = {
         "experiment_name": experiment_name,
         "prompt": results.get("prompt", ""),
-        "sti_k_alpha": results.get("sti_k_alpha", 0.0),
-        "mti_k_alpha": results.get("mti_k_alpha", 0.0),
-        "sti_k_alpha_by_metric": results.get("sti_k_alpha_by_metric", {}),
-        "mti_k_alpha_by_metric": results.get("mti_k_alpha_by_metric", {}),
-        "sti_exact_match_percentage": results.get("sti_exact_match_percentage", 0.0),
-        "mti_exact_match_percentage": results.get("mti_exact_match_percentage", 0.0),
-        "sti_exact_match_percentage_by_metric": results.get("sti_exact_match_percentage_by_metric", {}),
-        "mti_exact_match_percentage_by_metric": results.get("mti_exact_match_percentage_by_metric", {}),
+        "sti_k_alpha": round(results.get("sti_k_alpha", 0.0), 3),
+        "mti_k_alpha": round(results.get("mti_k_alpha", 0.0), 3),
+        "sti_k_alpha_by_metric": {
+            metric: round(value, 3) for metric, value in results.get("sti_k_alpha_by_metric", {}).items()
+        },
+        "mti_k_alpha_by_metric": {
+            metric: round(value, 3) for metric, value in results.get("mti_k_alpha_by_metric", {}).items()
+        },
+        "sti_exact_match_percentage": round(results.get("sti_exact_match_percentage", 0.0), 3),
+        "mti_exact_match_percentage": round(results.get("mti_exact_match_percentage", 0.0), 3),
+        "sti_exact_match_percentage_by_metric": {
+            metric: round(value, 3) for metric, value in results.get("sti_exact_match_percentage_by_metric", {}).items()
+        },
+        "mti_exact_match_percentage_by_metric": {
+            metric: round(value, 3) for metric, value in results.get("mti_exact_match_percentage_by_metric", {}).items()
+        },
+        
         "calculation_timestamp": datetime.now(),
         "matched_documents": results.get("matched_documents", 0),
         "total_documents": results.get("total_documents", 0)
