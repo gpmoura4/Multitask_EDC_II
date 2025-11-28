@@ -658,8 +658,8 @@ def main():
         print(f"  STI: {sti_exp['model_name']}")
         print(f"  MTI: {mti_exp['model_name']}")
     
-    # pegando o que ja foi setado no experimento mti (gpt4o-mini)
-    evaluator_model = mti_exp["model_name"]
+    #  Juiz mockado
+    evaluator_model = "gpt-4o-mini-2024-07-18"
     
     # Criar registro do experimento LLM Judge
     llm_judge_experiment_id = create_llm_judge_experiment_record(
