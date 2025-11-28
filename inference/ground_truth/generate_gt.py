@@ -130,7 +130,8 @@ explanations_b = {{...}}
 {answer_b}
 """
 
-GT_EVALUATION_TEMPLATE_V3 = """You are an independent evaluation agent whose task is to assess the quality of answers produced by AI models. Your role is to rate each answer according to five human-preference criteria. You must do so with neutrality, precision, and consistency.
+GT_EVALUATION_TEMPLATE_V3 = """
+You are an independent evaluation agent whose task is to assess the quality of answers produced by AI models. Your role is to rate each answer according to five human-preference criteria. You must do so with neutrality, precision, and consistency.
 Your evaluation covers two answers to the same user query. For each answer, assign a score from 1 to 5 for each attribute listed below. Before deciding on a score, briefly outline your reasoning process and then summarize it in one or two sentences.
 Produce two JSON objects for each answer:
 1.One named scores containing the numerical scores.

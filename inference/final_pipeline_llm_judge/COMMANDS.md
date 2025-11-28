@@ -23,12 +23,7 @@ python inference/final_pipeline_llm_judge/llm_judge.py `
 
 ### Bash
 ```bash
-python inference/final_pipeline_llm_judge/llm_judge.py \
-    --sti_experiment_id "691e5cdb47cb353cce0b14b0" \
-    --mti_experiment_id "691f07ff79c79aad7e95f16d" \
-    --experiment_name "LLM_Judge_gpt-4o-mini_TEST" \
-    --is_test \
-    --seed 42
+uv run inference/final_pipeline_llm_judge/llm_judge.py --sti_experiment_id "691e5cdb47cb353cce0b14b0" --mti_experiment_id "691f07ff79c79aad7e95f16d" --experiment_name "LLM_Judge_gpt-4o-mini_MUDA_O_NOME" --is_test --seed 42
 ```
 
 ## 🚀 Modo Completo (todas as instâncias)
