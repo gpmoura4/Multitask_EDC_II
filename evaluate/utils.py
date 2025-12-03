@@ -6,8 +6,9 @@ import torch
 from tqdm import tqdm
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from groq import Groq
-from openai import OpenAI  # nova lib oficial OpenAI 1.x
+from openai import OpenAI
 from dotenv import load_dotenv
+
 load_dotenv()
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
@@ -16,66 +17,105 @@ GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
 class RemoteChatModel:
     """
-    Wrapper simples para modelos remotos de chat (OpenAI ou Groq).
-    Mantém compatibilidade com a assinatura (model, tokenizer=None).
+    Wrapper para modelos remotos (OpenAI, Groq, Ollama).
     """
+
     def __init__(self, client, model_name: str, provider: str):
-        self.client = client          # OpenAI ou Groq
-        self.model_name = model_name  # nome do modelo (ex: "gpt-4o", "llama-3.1-70b-versatile")
-        self.provider = provider      # "openai" ou "groq"
+        self.client = client
+        self.model_name = model_name
+        self.provider = provider
 
 
+# ============================================================
+#   CLIENTE OLLAMA (Completo e Funcional)
+# ============================================================
+class OllamaClient:
+    """
+    Cliente mínimo para usar o endpoint oficial do Ollama:
+    POST http://localhost:11434/api/chat
+    """
+
+    def __init__(self, model_name, base_url="http://localhost:11434/api/chat"):
+        self.model_name = model_name
+        self.base_url = base_url
+
+    def chat(self, prompt):
+        import requests
+
+        payload = {
+            "model": self.model_name,
+            "messages": [
+                {"role": "user", "content": prompt}
+            ],
+            "stream": False
+        }
+
+        resp = requests.post(self.base_url, json=payload)
+        resp.raise_for_status()
+        data = resp.json()
+
+        # Resposta correta: data["message"]["content"]
+        return data["message"]["content"]
+
+
+# ============================================================
+#      generate_completions (AGORA COM SUPORTE A OLLAMA)
+# ============================================================
 def generate_completions(
-    model,
-    tokenizer,
-    prompts: List[str],
-    batch_size: int = 1,
-    stop_id_sequences=None,   # mantido por compatibilidade, ainda não usado
-    add_special_tokens: bool = True,  # idem
-    disable_tqdm: bool = False,
-    max_new_tokens: int = 512,
-    min_new_tokens: int = 1,
-    do_sample: bool = False,
-    temperature: float = 0.7,
-    top_p: float = 1.0
+        model,
+        tokenizer,
+        prompts: List[str],
+        batch_size: int = 1,
+        stop_id_sequences=None,
+        add_special_tokens: bool = True,
+        disable_tqdm: bool = False,
+        max_new_tokens: int = 512,
+        min_new_tokens: int = 1,
+        do_sample: bool = False,
+        temperature: float = 0.7,
+        top_p: float = 1.0
 ) -> Tuple[List[float], List[str]]:
-    """
-    Gera completions com:
-      - Modelos remotos (OpenAI ou Groq) via chat.completions
-      - Modelos locais Hugging Face (causal LM)
-
-    Retorna:
-        generation_times: lista com tempos de geração por prompt
-        generations:      lista com textos gerados
-    """
-
     generations: List[str] = []
     generation_times: List[float] = []
 
-    # 🔹 Caso 1: modelo REMOTO (OpenAI ou Groq) → tokenizer == None
+    # -------------------------------------------------------------
+    # CASO MODELOS REMOTOS (OpenAI, Groq, Ollama)
+    # -------------------------------------------------------------
     if tokenizer is None:
         if not isinstance(model, RemoteChatModel):
-            raise TypeError(
-                "Esperado RemoteChatModel quando tokenizer é None. "
-                "Verifique o retorno de load_hf_lm_and_tokenizer."
-            )
+            raise TypeError("Esperado RemoteChatModel para modelos remotos.")
 
+        provider = model.provider
+
+        # ---------------------------------------------
+        #   🔵 PROVIDER = OLLAMA
+        # ---------------------------------------------
+        if provider == "ollama":
+            for prompt in tqdm(prompts, disable=disable_tqdm):
+                start = time.time()
+                reply = model.client.chat(prompt)
+                end = time.time()
+
+                generations.append(reply.strip())
+                generation_times.append(end - start)
+
+            return generation_times, generations
+
+        # ---------------------------------------------
+        #   🟩 OpenAI / 🟥 Groq (permanece igual)
+        # ---------------------------------------------
         client = model.client
         remote_model_name = model.model_name
 
         for prompt in tqdm(prompts, disable=disable_tqdm):
             start = time.time()
 
-            # mapeia do_sample para temperature (se quiser determinístico, basta usar temperature=0)
-            temp = temperature if do_sample else temperature
-
             response = client.chat.completions.create(
                 model=remote_model_name,
                 messages=[{"role": "user", "content": prompt}],
-                temperature=temp,
                 max_tokens=max_new_tokens,
+                temperature=temperature,
                 top_p=top_p,
-                # se quiser, pode adicionar 'stop' aqui futuramente
             )
 
             end = time.time()
@@ -84,7 +124,9 @@ def generate_completions(
 
         return generation_times, generations
 
-    # 🔹 Caso 2: modelo Hugging Face local
+    # -------------------------------------------------------------
+    # CASO MODELOS LOCAIS HF (continua como estava)
+    # -------------------------------------------------------------
     model.eval()
 
     for i in tqdm(range(0, len(prompts), batch_size), disable=disable_tqdm):
@@ -94,7 +136,7 @@ def generate_completions(
             return_tensors="pt",
             padding=True,
             truncation=True,
-            max_length=2048,  # Define um tamanho máximo para evitar warnings
+            max_length=2048,
             add_special_tokens=add_special_tokens,
         ).to(model.device)
 
@@ -111,7 +153,7 @@ def generate_completions(
                 temperature=temperature,
                 top_p=top_p,
                 pad_token_id=tokenizer.eos_token_id,
-                eos_token_id=tokenizer.eos_token_id,  # Garante que o modelo pare corretamente
+                eos_token_id=tokenizer.eos_token_id,
             )
 
         if torch.cuda.is_available():
@@ -120,7 +162,6 @@ def generate_completions(
 
         decoded = tokenizer.batch_decode(outputs, skip_special_tokens=True)
 
-        # remove o prompt original do começo, se estiver incluído na saída
         cleaned = [
             out.replace(prompt, "").strip()
             for out, prompt in zip(decoded, batch_prompts)
@@ -135,66 +176,61 @@ def generate_completions(
     return generation_times, generations
 
 
+# ============================================================
+#   load_hf_lm_and_tokenizer (AGORA COM SUPORTE A OLLAMA)
+# ============================================================
 def load_hf_lm_and_tokenizer(
-    model_name: str,
-    torch_dtype: torch.dtype = torch.float16
+        model_name: str,
+        torch_dtype: torch.dtype = torch.float16
 ):
-    """
-    Carrega um "modelo" de linguagem e tokenizer, com roteamento:
-
-      - Modelos GPT (gpt-3.*, gpt-4.*, o1, o3, etc.)  → OpenAI (API)
-      - Modelos com 'llama' ou 'groq' no nome         → Groq (API)
-      - Demais modelos                                → Hugging Face local
-
-    Retorna:
-        (model, tokenizer)
-
-    Onde:
-      - Para OpenAI/Groq: model é RemoteChatModel e tokenizer == None
-      - Para HF: model é AutoModelForCausalLM e tokenizer é AutoTokenizer
-    """
-
-    # Normaliza para facilitar checagens
     name_lower = model_name.lower()
 
-    # 🔹 Caso 1 – Modelos GPT → OpenAI
+    # -------------------------------------------------------------
+    # 🔵 Caso especial: Llama-2-7b → rodar via OLLAMA LOCAL
+    # -------------------------------------------------------------
+    if model_name in ["Llama-2-7b", "meta-llama/Llama-2-7b-hf", "llama2:7b"]:
+        print("🟦 Usando modelo local via Ollama: http://localhost:11434/api/chat")
+
+        client = OllamaClient(model_name=model_name)
+        remote = RemoteChatModel(client=client, model_name=model_name, provider="ollama")
+        return remote, None
+
+    # -------------------------------------------------------------
+    # 🟩 OpenAI
+    # -------------------------------------------------------------
     if any(prefix in name_lower for prefix in ["gpt-3", "gpt-4", "o1", "o3"]):
         if not OPENAI_API_KEY:
-            raise ValueError("❌ Variável de ambiente OPENAI_API_KEY não encontrada.")
-
+            raise ValueError("OPENAI_API_KEY não encontrada.")
         client = OpenAI(api_key=OPENAI_API_KEY)
-        print(f"✅ Usando modelo OpenAI: {model_name}")
-
+        print(f"🟩 Usando modelo OpenAI: {model_name}")
         remote = RemoteChatModel(client=client, model_name=model_name, provider="openai")
         return remote, None
 
-    # 🔹 Caso 2 – Modelos LLaMA ou Groq → Groq
+    # -------------------------------------------------------------
+    # 🟥 Groq
+    # -------------------------------------------------------------
     if ("llama-3.3-70b-versatile" in name_lower) or ("groq" in name_lower) or ("openai/" in name_lower):
         if not GROQ_API_KEY:
-            raise ValueError("❌ Variável de ambiente GROQ_API_KEY não encontrada.")
-
+            raise ValueError("GROQ_API_KEY não encontrada.")
         client = Groq(api_key=GROQ_API_KEY)
-        print(f" Usando modelo Groq: {model_name}")
-
+        print(f"🟥 Usando modelo Groq: {model_name}")
         remote = RemoteChatModel(client=client, model_name=model_name, provider="groq")
         return remote, None
 
-    # 🔹 Caso 3 – Demais modelos → Hugging Face local
+    # -------------------------------------------------------------
+    # Hugging Face local
+    # -------------------------------------------------------------
     if torch.cuda.is_available():
         device_map = "auto"
-    elif torch.backends.mps.is_available():
-        device_map = {"": "mps"}
     else:
         device_map = {"": "cpu"}
 
-    print(f"🔧 Carregando modelo HF '{model_name}' com dtype={torch_dtype} no dispositivo {device_map}")
+    print(f"🔧 Carregando modelo HF '{model_name}' no dispositivo {device_map}")
 
     tokenizer = AutoTokenizer.from_pretrained(model_name, use_fast=True)
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
-    
-    # Para modelos decoder-only, padding deve ser à esquerda
-    tokenizer.padding_side = 'left'
+    tokenizer.padding_side = "left"
 
     model = AutoModelForCausalLM.from_pretrained(
         model_name,
@@ -202,6 +238,7 @@ def load_hf_lm_and_tokenizer(
         device_map=device_map,
         trust_remote_code=True,
     )
+
     model.eval()
     print("✅ Modelo Hugging Face carregado com sucesso.")
     return model, tokenizer
