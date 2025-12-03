@@ -176,8 +176,16 @@ args = parser.parse_args()
 # ------------------------------
 # Criação de diretórios
 # ------------------------------
-# Caminho base: {output_dir}/{model_name}/MTI
-base_output_path = os.path.join(args.output_dir, args.model_name, "MTI")
+# Sanitiza o nome do modelo para ser válido como nome de pasta (Windows não aceita ':', '/', '\', etc.)
+safe_model_name = (
+    args.model_name
+    .replace(":", "_")
+    .replace("/", "_")
+    .replace("\\", "_")
+)
+
+# Caminho base: {output_dir}/{safe_model_name}/MTI
+base_output_path = os.path.join(args.output_dir, safe_model_name, "MTI")
 os.makedirs(base_output_path, exist_ok=True)
 
 # ------------------------------
@@ -198,7 +206,7 @@ print("starting evaluation")
 # Criar registro do experimento
 experiment_id = create_experiment_record(
     inference_type="MTI",
-    experiment_name="MTI_gpt-4o-mini-2024-07-18_Experiment",
+    experiment_name="MTI_llama-2-7b_Experiment_1125",
     batch_size=args.batch_size,
     save_every=args.save_every,
     model_name=args.model_name,
@@ -214,7 +222,7 @@ experiment_id = create_experiment_record(
         "temperature": 0.7,
         "top_p": 1.0
     },
-    id="691f07ff79c79aad7e95f16d"
+    #id="691f07ff79c79aad7e95f16d"
 )
 
 # -------------------------------
