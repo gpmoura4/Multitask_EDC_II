@@ -1,14 +1,3 @@
-"""
-Script para geração de Ground Truth (GT) a partir de experimentos STI e MTI.
-
-Este script:
-1. Seleciona pares de experimentos STI/MTI com o mesmo model_name
-2. Amostra instâncias para avaliação (modo teste: 24 instâncias/12 tasks, modo real: 240 instâncias/12 tasks)
-3. Constrói prompts de avaliação combinando respostas STI e MTI
-4. Envia para LLM (GPT-4o-mini) para avaliação de qualidade
-5. Salva resultados na collection 'ground_truth_results'
-"""
-
 from __future__ import annotations
 
 import json
@@ -36,7 +25,17 @@ gt_collection = db["refine_judge_results"]
 
 
 # Template de prompt para avaliação
-GT_EVALUATION_TEMPLATE_V1 = """Please act as an impartial judge and evaluate the quality of the responses provided by two AI assistants to the user question displayed below. Given the following user question and answers, please assign a score from 1(worst) to 5(best) following the Likert scale for each attribute listed below. For each attribute, begin your evaluation thinking step by step and providing a short explanation. The evaluation should be generated for the two provided responses. Avoid any position biases and ensure that the order in which the responses were presented does not influence your decision. Do not allow the length of the responses to influence your evaluation. Do not favor certain names of the assistants.
+GT_EVALUATION_TEMPLATE_V1 = """
+Please act as an impartial judge and evaluate 
+the quality of the responses provided by two AI assistants to the user 
+question displayed below. Given the following user question and answers, 
+please assign a score from 1(worst) to 5(best) following the Likert scale 
+for each attribute listed below. 
+For each attribute, begin your evaluation thinking step by step and providing a short explanation. 
+The evaluation should be generated for the two provided responses. 
+Avoid any position biases and ensure that the order in 
+which the responses were presented does not influence your decision. 
+Do not allow the length of the responses to influence your evaluation. Do not favor certain names of the assistants.
 
 For each provided response, please return your answer in two JSON:
 
@@ -113,7 +112,8 @@ explanations_b = {{
 
 GT_EVALUATION_TEMPLATE_V2 = """
 [System]
-Act as a neutral and unbiased evaluator. You will evaluate two AI-generated answers to the same user query. For each answer, follow this evaluation procedure:
+Act as a neutral and unbiased evaluator. 
+You will evaluate two AI-generated answers to the same user query. For each answer, follow this evaluation procedure:
 
 1. Analyze the answer step-by-step.
 2. Assign a score from 1 to 5 following the Likert scale for each attribute:
@@ -191,7 +191,8 @@ explanations_b = {{ ... }}
 
 GT_EVALUATION_TEMPLATE_V3 = """
 [System]
-Act as a neutral and unbiased evaluator. You will evaluate two AI-generated answers to the same user query. For each answer, follow this evaluation procedure:
+Act as a neutral and unbiased evaluator.
+You will evaluate two AI-generated answers to the same user query. For each answer, follow this evaluation procedure:
 
 1. Analyze the answer step-by-step.
 2. Assign a score from 1 to 5 following the Likert scale for each attribute:
