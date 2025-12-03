@@ -62,7 +62,7 @@ mongo_client = MongoClient(MONGO_URI)
 db = mongo_client["experiments_db"]
 refine_judge_collection = db["refine_judge_results"]
 final_gt_collection = db["final_ground_truth"]
-similarity_results_collection = db["refine_judge_similarity_k_alpha_test"]
+similarity_results_collection = db["refine_judge_similarity_k_alpha"]
 
 # Diretório para armazenar arquivos de instâncias selecionadas
 INSTANCES_DIR = Path(__file__).parent / "selected_instances"
