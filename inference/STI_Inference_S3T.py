@@ -373,7 +373,7 @@ print("starting evaluation")
 
 experiment_id = create_experiment_record(
     inference_type="STI",
-    experiment_name="STI_gpt-4o-mini-2024-07-18_Experiment",
+    experiment_name="STI_ gpt-3.5-turbo-0125_Experiment_1120",
     batch_size=args.batch_size,
     save_every=args.save_every,
     model_name=args.model_name,
@@ -388,7 +388,8 @@ experiment_id = create_experiment_record(
         "do_sample": True,
         "temperature": 0.7,
         "top_p": 1.0
-    }
+    },
+    id="691f6c99d40086eaa5c7a322"
 )
 
 # -------------------------------
