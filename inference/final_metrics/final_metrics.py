@@ -150,160 +150,124 @@ METRICS = ["coherence", "specificity", "informativeness", "relevance", "Understa
 
 
 def extract_scores_by_experiment() -> Dict[str, Dict[str, Dict[str, List[int]]]]:
-    """
-    Extrai as notas de todos os documentos da collection llm_judge_results
-    agrupadas por experiment_name, approach (STI/MTI) e métrica.
-    
-    Returns:
-        Dict com estrutura: {experiment_name: {approach: {metric: [scores]}}}
-    """
     print("📊 Extraindo notas da collection llm_judge_results...")
-    
-    # Estrutura: experiment_name -> approach -> metric -> list of scores
+
     scores_by_experiment = defaultdict(lambda: {
         "STI": defaultdict(list),
         "MTI": defaultdict(list)
     })
-    
-    # Buscar todos os documentos
+
     documents = llm_judge_results_collection.find()
     doc_count = 0
-    
+
     for doc in documents:
         doc_count += 1
         experiment_name = doc.get("experiment_name")
-        
+
         if not experiment_name:
             continue
-            
-        # Extrair notas STI
+
+        # STI
         sti_answer = doc.get("llm_judge_STI_answer", {})
         for metric in METRICS:
             if metric in sti_answer and "score" in sti_answer[metric]:
                 score = sti_answer[metric]["score"]
                 scores_by_experiment[experiment_name]["STI"][metric].append(score)
-        
-        # Extrair notas MTI
+
+        # MTI
         mti_answer = doc.get("llm_judge_MTI_answer", {})
         for metric in METRICS:
             if metric in mti_answer and "score" in mti_answer[metric]:
                 score = mti_answer[metric]["score"]
                 scores_by_experiment[experiment_name]["MTI"][metric].append(score)
-    
+
     print(f"✅ {doc_count} documentos processados")
     print(f"✅ {len(scores_by_experiment)} experimentos encontrados")
-    
+
     return scores_by_experiment
 
 
 def calculate_statistics(scores: List[int]) -> Dict:
-    """
-    Calcula estatísticas para uma lista de notas.
-    
-    Args:
-        scores: Lista de notas (1-5)
-    
-    Returns:
-        Dict com mean, std, e count_max_score
-    """
     if not scores:
         return {
-            "mean": 0.0,
-            "std": 0.0,
+            "mean": 0.00,
+            "std": 0.00,
             "count_max_score": 0,
             "total_samples": 0
         }
-    
+
     scores_array = np.array(scores)
-    
+
     return {
-        "mean": float(np.mean(scores_array)),
-        "std": float(np.std(scores_array, ddof=1) if len(scores) > 1 else 0.0),
+        "mean": round(float(np.mean(scores_array)), 2),
+        "std": round(float(np.std(scores_array, ddof=1)) if len(scores) > 1 else 0.00, 2),
         "count_max_score": int(np.sum(scores_array == 5)),
         "total_samples": len(scores)
     }
 
 
 def calculate_comparative_metrics(scores_by_experiment: Dict) -> List[Dict]:
-    """
-    Calcula as métricas comparativas entre STI e MTI para cada experimento.
-    
-    Args:
-        scores_by_experiment: Dict com as notas agrupadas
-    
-    Returns:
-        Lista de documentos prontos para inserir na collection
-    """
     print("\n📈 Calculando métricas comparativas...")
-    
+
     results = []
-    
+
     for experiment_name, approaches in scores_by_experiment.items():
         print(f"\n  Processando experimento: {experiment_name}")
-        
+
         sti_scores = approaches["STI"]
         mti_scores = approaches["MTI"]
-        
-        # Calcular estatísticas por métrica
+
         sti_metrics_stats = {}
         mti_metrics_stats = {}
         differences = {}
-        
+
         overall_sti_scores = []
         overall_mti_scores = []
-        
+
         for metric in METRICS:
             sti_metric_scores = sti_scores.get(metric, [])
             mti_metric_scores = mti_scores.get(metric, [])
-            
+
             sti_stats = calculate_statistics(sti_metric_scores)
             mti_stats = calculate_statistics(mti_metric_scores)
-            
+
             sti_metrics_stats[metric] = sti_stats
             mti_metrics_stats[metric] = mti_stats
-            
-            # Calcular diferença (MTI - STI)
+
+            diff = round(mti_stats["mean"] - sti_stats["mean"], 2)
+
             differences[metric] = {
-                "mean_difference": mti_stats["mean"] - sti_stats["mean"],
-                "better_approach": "MTI" if mti_stats["mean"] > sti_stats["mean"] else "STI" if sti_stats["mean"] > mti_stats["mean"] else "TIE"
+                "mean_difference": diff,
+                "better_approach": "MTI" if diff > 0 else "STI" if diff < 0 else "TIE"
             }
-            
-            # Acumular para média geral
+
             overall_sti_scores.extend(sti_metric_scores)
             overall_mti_scores.extend(mti_metric_scores)
-        
-        # Calcular estatísticas gerais (média de todas as métricas)
+
         overall_sti_stats = calculate_statistics(overall_sti_scores)
         overall_mti_stats = calculate_statistics(overall_mti_scores)
-        
-        # Determinar abordagem vencedora geral
+
+        overall_mean_diff = round(overall_mti_stats["mean"] - overall_sti_stats["mean"], 2)
+
         wins_mti = sum(1 for d in differences.values() if d["better_approach"] == "MTI")
         wins_sti = sum(1 for d in differences.values() if d["better_approach"] == "STI")
         ties = sum(1 for d in differences.values() if d["better_approach"] == "TIE")
-        
-        # Construir documento de resultado
+
         result_doc = {
             "experiment_name": experiment_name,
             "calculation_timestamp": datetime.utcnow(),
-            
-            # Estatísticas STI por métrica
+
             "STI_metrics": sti_metrics_stats,
-            
-            # Estatísticas MTI por métrica
             "MTI_metrics": mti_metrics_stats,
-            
-            # Diferenças entre MTI e STI
             "differences": differences,
-            
-            # Estatísticas gerais (todas as métricas combinadas)
+
             "overall_statistics": {
                 "STI": overall_sti_stats,
                 "MTI": overall_mti_stats,
-                "mean_difference": overall_mti_stats["mean"] - overall_sti_stats["mean"],
-                "better_approach_overall": "MTI" if overall_mti_stats["mean"] > overall_sti_stats["mean"] else "STI" if overall_sti_stats["mean"] > overall_mti_stats["mean"] else "TIE"
+                "mean_difference": overall_mean_diff,
+                "better_approach_overall": "MTI" if overall_mean_diff > 0 else "STI" if overall_mean_diff < 0 else "TIE"
             },
-            
-            # Resumo comparativo
+
             "comparative_summary": {
                 "metrics_won_by_MTI": wins_mti,
                 "metrics_won_by_STI": wins_sti,
@@ -311,83 +275,73 @@ def calculate_comparative_metrics(scores_by_experiment: Dict) -> List[Dict]:
                 "dominant_approach": "MTI" if wins_mti > wins_sti else "STI" if wins_sti > wins_mti else "BALANCED"
             }
         }
-        
+
         results.append(result_doc)
-        
-        # Imprimir resumo
-        print(f"    ✓ STI geral: μ={overall_sti_stats['mean']:.3f}, σ={overall_sti_stats['std']:.3f}")
-        print(f"    ✓ MTI geral: μ={overall_mti_stats['mean']:.3f}, σ={overall_mti_stats['std']:.3f}")
+
+        print(f"    ✓ STI geral: μ={overall_sti_stats['mean']:.2f}, σ={overall_sti_stats['std']:.2f}")
+        print(f"    ✓ MTI geral: μ={overall_mti_stats['mean']:.2f}, σ={overall_mti_stats['std']:.2f}")
         print(f"    ✓ Melhor abordagem: {result_doc['comparative_summary']['dominant_approach']}")
-    
+
     return results
 
 
 def save_results_to_collection(results: List[Dict]):
-    """
-    Salva os resultados na collection llm_judge_comparative_metrics.
-    Remove documentos antigos do mesmo experimento antes de inserir novos.
-    """
     print("\n💾 Salvando resultados na collection llm_judge_comparative_metrics...")
-    
+
     for result in results:
         experiment_name = result["experiment_name"]
-        
-        # Remover documentos antigos do mesmo experimento
+
         delete_result = comparative_metrics_collection.delete_many({
             "experiment_name": experiment_name
         })
-        
+
         if delete_result.deleted_count > 0:
             print(f"  🗑️  Removidos {delete_result.deleted_count} documento(s) antigo(s) de {experiment_name}")
-        
-        # Inserir novo documento
+
         insert_result = comparative_metrics_collection.insert_one(result)
         print(f"  ✅ Documento inserido para {experiment_name} (ID: {insert_result.inserted_id})")
-    
+
     print(f"\n✨ Total de {len(results)} experimento(s) processado(s) e salvos!")
 
 
 def print_detailed_report(results: List[Dict]):
-    """
-    Imprime um relatório detalhado das métricas comparativas.
-    """
     print("\n" + "="*80)
     print("📊 RELATÓRIO DETALHADO DE MÉTRICAS COMPARATIVAS STI vs MTI")
     print("="*80)
-    
+
     for result in results:
         print(f"\n{'='*80}")
         print(f"EXPERIMENTO: {result['experiment_name']}")
         print(f"{'='*80}")
-        
+
         print("\n📋 MÉTRICAS INDIVIDUAIS:")
         print("-" * 80)
         print(f"{'Métrica':<20} {'STI μ':<10} {'STI σ':<10} {'STI #5':<8} {'MTI μ':<10} {'MTI σ':<10} {'MTI #5':<8} {'Δ(MTI-STI)':<12} {'Melhor':<8}")
         print("-" * 80)
-        
+
         for metric in METRICS:
             sti_stats = result["STI_metrics"][metric]
             mti_stats = result["MTI_metrics"][metric]
             diff = result["differences"][metric]
-            
+
             print(f"{metric:<20} "
-                  f"{sti_stats['mean']:<10.3f} "
-                  f"{sti_stats['std']:<10.3f} "
+                  f"{sti_stats['mean']:<10.2f} "
+                  f"{sti_stats['std']:<10.2f} "
                   f"{sti_stats['count_max_score']:<8} "
-                  f"{mti_stats['mean']:<10.3f} "
-                  f"{mti_stats['std']:<10.3f} "
+                  f"{mti_stats['mean']:<10.2f} "
+                  f"{mti_stats['std']:<10.2f} "
                   f"{mti_stats['count_max_score']:<8} "
-                  f"{diff['mean_difference']:<12.3f} "
+                  f"{diff['mean_difference']:<12.2f} "
                   f"{diff['better_approach']:<8}")
-        
+
         print("\n📊 ESTATÍSTICAS GERAIS:")
         print("-" * 80)
         overall = result["overall_statistics"]
-        print(f"STI - Média Geral: {overall['STI']['mean']:.3f} | Desvio Padrão: {overall['STI']['std']:.3f} | Notas 5: {overall['STI']['count_max_score']}")
-        print(f"MTI - Média Geral: {overall['MTI']['mean']:.3f} | Desvio Padrão: {overall['MTI']['std']:.3f} | Notas 5: {overall['MTI']['count_max_score']}")
-        print(f"Diferença (MTI - STI): {overall['mean_difference']:.3f}")
+        print(f"STI - Média Geral: {overall['STI']['mean']:.2f} | Desvio Padrão: {overall['STI']['std']:.2f} | Notas 5: {overall['STI']['count_max_score']}")
+        print(f"MTI - Média Geral: {overall['MTI']['mean']:.2f} | Desvio Padrão: {overall['MTI']['std']:.2f} | Notas 5: {overall['MTI']['count_max_score']}")
+        print(f"Diferença (MTI - STI): {overall['mean_difference']:.2f}")
         print(f"Melhor Abordagem Geral: {overall['better_approach_overall']}")
-        
+
         print("\n🏆 RESUMO COMPARATIVO:")
         print("-" * 80)
         summary = result["comparative_summary"]
@@ -398,32 +352,25 @@ def print_detailed_report(results: List[Dict]):
 
 
 def main():
-    """
-    Função principal que executa todo o pipeline de cálculo de métricas comparativas.
-    """
     print("🚀 Iniciando cálculo de métricas comparativas STI vs MTI\n")
-    
+
     try:
-        # 1. Extrair notas da collection
         scores_by_experiment = extract_scores_by_experiment()
-        
+
         if not scores_by_experiment:
             print("⚠️ Nenhum experimento encontrado na collection llm_judge_results")
             return
-        
-        # 2. Calcular métricas comparativas
+
         results = calculate_comparative_metrics(scores_by_experiment)
-        
-        # 3. Salvar na collection
+
         save_results_to_collection(results)
-        
-        # 4. Imprimir relatório detalhado
+
         print_detailed_report(results)
-        
+
         print("\n" + "="*80)
         print("✅ PROCESSAMENTO CONCLUÍDO COM SUCESSO!")
         print("="*80)
-        
+
     except Exception as e:
         print(f"\n❌ ERRO durante o processamento: {str(e)}")
         raise
