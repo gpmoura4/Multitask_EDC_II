@@ -10,10 +10,10 @@ from bson import ObjectId
 from datetime import datetime
 from pymongo import MongoClient
 
-# Conexão MongoDB
+
 MONGO_URI = os.getenv("MONGODB_URI")
 
-# Cria conexão global
+
 mongo_client = MongoClient(MONGO_URI)
 db = mongo_client["experiments_db"]
 collection = db["experiment_results"]
@@ -21,9 +21,6 @@ answer_collection = db["answer_results"]
 
 
 def save_error_checkpoint(experiment_id, task_id, error_msg):
-    """
-    Salva um checkpoint de erro em arquivo txt para recuperação posterior.
-    """
     checkpoint_file = f"error_checkpoint_{experiment_id}.txt"
     with open(checkpoint_file, 'w') as f:
         f.write(f"experiment_id: {experiment_id}\n")
@@ -34,13 +31,9 @@ def save_error_checkpoint(experiment_id, task_id, error_msg):
 
 
 def finalize_experiment(experiment_id):
-    """
-    Atualiza o documento inicial de um experimento para marcar como concluído.
-    Preenche também o final_time e total_time.
-    """
     final_time = datetime.now()
 
-    # Buscar o documento original para calcular total_time
+    
     doc = collection.find_one({"_id": experiment_id})
     if not doc:
         print(f"⚠️  Documento de experimento {experiment_id} não encontrado.")
@@ -62,20 +55,16 @@ def finalize_experiment(experiment_id):
 
 
 def create_or_update_answer_document(experiment_id, task_id, instance_id, prompt, llm_answer, generation_time, consumed_tokens):
-    """
-    Cria ou atualiza um documento de resposta na collection answer_results.
-    Para MTI, há apenas uma resposta única (não tem stages s1, s2, s3 como no STI).
-    """
-    # Buscar documento existente
+    
     existing_doc = answer_collection.find_one({
         "experiment_id": experiment_id,
         "instance_id": instance_id
     })
     
     if existing_doc:
-        # Documento existe - fazer update
+        
         update_data = {
-            "llm_answer.s1": llm_answer,  # MTI armazena resposta única em s1
+            "llm_answer.s1": llm_answer,  
             "prompt": prompt,
             "generation_time": generation_time,
             "consumed_tokens": consumed_tokens if consumed_tokens is not None else 0
@@ -87,13 +76,13 @@ def create_or_update_answer_document(experiment_id, task_id, instance_id, prompt
         )
         return existing_doc["_id"]
     else:
-        # Documento não existe - criar novo
+        
         doc = {
             "experiment_id": experiment_id,
             "task_id": task_id,
             "instance_id": instance_id,
             "prompt": prompt,
-            "llm_answer": {"s1": llm_answer},  # MTI: resposta única armazenada em s1
+            "llm_answer": {"s1": llm_answer},  
             "generation_time": generation_time,
             "consumed_tokens": consumed_tokens if consumed_tokens is not None else 0
         }
@@ -102,10 +91,6 @@ def create_or_update_answer_document(experiment_id, task_id, instance_id, prompt
 
 
 def check_instance_processed(experiment_id, instance_id):
-    """
-    Verifica se uma instância específica já foi processada.
-    Para MTI, verificamos se existe llm_answer.s1.
-    """
     doc = answer_collection.find_one({
         "experiment_id": experiment_id,
         "instance_id": instance_id
@@ -125,10 +110,7 @@ def create_experiment_record(
     llm_params: dict,
     id: str | None = None,
 ):
-    """
-    Cria o documento inicial do experimento.
-    """
-    # Se 'id' foi fornecido, tentar buscar experimento existente
+    
     if id is not None:
         try:
             object_id = ObjectId(id)
@@ -173,10 +155,7 @@ parser.add_argument("--test_num_instances", type=int, default=None, help="Number
 
 args = parser.parse_args()
 
-# ------------------------------
-# Criação de diretórios
-# ------------------------------
-# Sanitiza o nome do modelo para ser válido como nome de pasta (Windows não aceita ':', '/', '\', etc.)
+
 safe_model_name = (
     args.model_name
     .replace(":", "_")
@@ -184,13 +163,9 @@ safe_model_name = (
     .replace("\\", "_")
 )
 
-# Caminho base: {output_dir}/{safe_model_name}/MTI
 base_output_path = os.path.join(args.output_dir, safe_model_name, "MTI")
 os.makedirs(base_output_path, exist_ok=True)
 
-# ------------------------------
-# Carregar dados e modelo
-# ------------------------------
 with open("data/Free_Form_Generation.json", 'r') as file:
     data = json.load(file)
 
@@ -203,7 +178,6 @@ CoT = pd.read_excel("data/cot_breakdown.xlsx")
 
 print("starting evaluation")
 
-# Criar registro do experimento
 experiment_id = create_experiment_record(
     inference_type="MTI",
     experiment_name="MTI_llama-2-7b_Experiment_1125",
@@ -225,18 +199,12 @@ experiment_id = create_experiment_record(
     #id="691f07ff79c79aad7e95f16d"
 )
 
-# -------------------------------
-# Loop principal
-# -------------------------------
 
-# Determinar quais tasks processar baseado no modo de teste
 if args.is_test:
-    # Modo teste: processar task específica ou primeira disponível
     if args.test_task_id:
         # Verificar se a task existe
         if args.test_task_id in data:
             tasks_to_process = [(args.test_task_id, data[args.test_task_id])]
-            print(f"\nMODO DE TESTE ATIVADO")
             print(f"Task selecionada: {args.test_task_id}")
         else:
             available_tasks = list(data.keys())[:5]  # Mostrar primeiras 5 tasks
@@ -244,9 +212,7 @@ if args.is_test:
             print(f"Tasks disponíveis (primeiras 5): {', '.join(available_tasks)}")
             exit(1)
     else:
-        # Se não especificou task_id, usar a primeira
         tasks_to_process = list(data.items())[:1]
-        print(f"\nMODO DE TESTE ATIVADO (primeira task)")
         print(f"Task selecionada: {tasks_to_process[0][0]}")
     
     total_instances = len(tasks_to_process[0][1]['instance'])
@@ -256,14 +222,12 @@ if args.is_test:
     print(f"Número de instâncias a processar: {instances_to_process} de {total_instances}")
     print(f"Batch size: {args.batch_size}\n")
 else:
-    # Modo normal: processar todas as tasks
     tasks_to_process = list(data.items())
     print(f"\n📊 MODO COMPLETO: Processando todas as {len(tasks_to_process)} tasks\n")
 
 for k, v in tasks_to_process:
     print(f"\n=== Processando tuid {k} ===")
     
-    # Criar diretório para a task
     k_output_dir = os.path.join(base_output_path, str(k))
     os.makedirs(k_output_dir, exist_ok=True)
     
@@ -272,7 +236,6 @@ for k, v in tasks_to_process:
     
     csv_path = os.path.join(k_output_dir, f"free-form-{args.model_name}-MTI-{k}.csv")
     
-    # Ler progresso existente do CSV
     done_uids = set()
     if os.path.exists(csv_path):
         existing_df = pd.read_csv(csv_path)
@@ -281,21 +244,17 @@ for k, v in tasks_to_process:
     else:
         existing_df = pd.DataFrame(columns=["uid", "generation", "generation_time"])
     
-    # Verificar também no MongoDB quais instâncias já foram processadas
     mongo_done_uids = set()
     for uid in data[k]["instance"].keys():
         if check_instance_processed(experiment_id, str(uid)):
             mongo_done_uids.add(str(uid))
     
-    # Combinar ambos os conjuntos
     done_uids = done_uids.union(mongo_done_uids)
     if mongo_done_uids:
         print(f"⚙️  {len(mongo_done_uids)} instâncias já processadas para {k} (MongoDB).")
     
-    # Filtrar instâncias pendentes
     pending_items = [(uid, instance) for uid, instance in data[k]["instance"].items() if str(uid) not in done_uids]
     
-    # Se estiver em modo de teste e test_num_instances for especificado, limitar o número de instâncias
     if args.is_test and args.test_num_instances is not None:
         pending_items = pending_items[:args.test_num_instances]
         print(f"MODO TESTE: Limitando a {args.test_num_instances} instâncias")
@@ -310,11 +269,9 @@ for k, v in tasks_to_process:
     uids_done = []
     
     try:
-        # Processar em batches
         for i in range(0, len(pending_items), args.batch_size):
             batch = pending_items[i:i + args.batch_size]
             
-            # Construir lista de inputs para o batch
             input_list = []
             valid_uids = []
             valid_instances = []
@@ -335,7 +292,6 @@ for k, v in tasks_to_process:
             if not input_list:
                 continue
             
-            # Gerar respostas
             generation_time, generated_texts = generate_completions(
                 model,
                 tokenizer,
@@ -351,9 +307,7 @@ for k, v in tasks_to_process:
                 top_p=1.0
             )
             
-            # Salvar cada resposta no MongoDB
             for idx, (uid, instance, gen_text, gen_time) in enumerate(zip(valid_uids, valid_instances, generated_texts, generation_time)):
-                # Reconstruir o prompt para salvar no MongoDB
                 prompt = create_prompt_with_tulu_chat_format([{
                     "role": "user", 
                     "content": (
@@ -363,11 +317,9 @@ for k, v in tasks_to_process:
                     )
                 }])
                 
-                # Calcular tokens consumidos (aproximação)
                 consumed_tokens = len(gen_text.split())
                 
                 try:
-                    # Salvar/atualizar no MongoDB
                     create_or_update_answer_document(
                         experiment_id=experiment_id,
                         task_id=str(k),
@@ -380,7 +332,6 @@ for k, v in tasks_to_process:
                 except Exception as mongo_error:
                     print(f"⚠️  Erro ao salvar no MongoDB para {uid}: {mongo_error}")
             
-            # Salvar também no CSV (backup)
             batch_df = pd.DataFrame({
                 "uid": valid_uids,
                 "generation": generated_texts,
@@ -390,7 +341,6 @@ for k, v in tasks_to_process:
             all_new.append(batch_df)
             uids_done.extend(valid_uids)
             
-            # Salvar incrementalmente a cada N gerações
             if len(all_new) * args.batch_size >= args.save_every or i + args.batch_size >= len(pending_items):
                 new_df = pd.concat(all_new, ignore_index=True)
                 final_df = pd.concat([existing_df, new_df], ignore_index=True)
@@ -405,7 +355,6 @@ for k, v in tasks_to_process:
         
     except Exception as e:
         print(f"❌ Erro durante processamento de {k}: {e}")
-        # Salvar checkpoint de erro
         save_error_checkpoint(experiment_id, str(k), str(e))
         torch.cuda.empty_cache()
         continue

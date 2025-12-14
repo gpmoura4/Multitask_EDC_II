@@ -1,0 +1,19 @@
+\begin{table}[htbp]
+\caption{Resultados Detalhados da Abordagem MTI - Métricas LLM Judge por Modelo}
+\label{tab:mti_llm_judge}
+\centering
+
+\begin{adjustbox}{max width=\textwidth}
+\begin{tabular}{lcccccc}
+\toprule
+Modelo & Coerência & Especificidade & Informatividade & Relevância & Compreensibilidade & Média \\
+\midrule
+llama2:7b & $\mu$: 3.84 | $\sigma$: 0.71 | Max: 14.92\% & $\mu$: 3.59 | $\sigma$: 0.95 | Max: 11.83\% & $\mu$: 3.82 | $\sigma$: 0.78 | Max: 17.29\% & $\mu$: 4.56 | $\sigma$: 0.74 | Max: 67.79\% & $\mu$: 3.96 | $\sigma$: 0.78 | Max: 25.04\% & $\mu$: 3.95 | $\sigma$: 0.86 | Max: 27.38\% \\
+gpt-3.5-turbo-0125 & $\mu$: 4.34 | $\sigma$: 0.74 | Max: 45.88\% & $\mu$: 3.96 | $\sigma$: 1.15 | Max: 35.79\% & $\mu$: 4.14 | $\sigma$: 0.89 | Max: 39.38\% & $\mu$: 4.79 | $\sigma$: 0.60 | Max: 84.96\% & $\mu$: 4.47 | $\sigma$: 0.71 | Max: 55.50\% & $\mu$: 4.34 | $\sigma$: 0.89 | Max: 52.30\% \\
+llama-3.3-70b-versatile & $\mu$: 4.52 | $\sigma$: 0.53 | Max: 53.87\% & $\mu$: 4.28 | $\sigma$: 0.94 | Max: 44.50\% & $\mu$: 4.46 | $\sigma$: 0.57 | Max: 49.54\% & $\mu$: 4.96 | $\sigma$: 0.21 | Max: 95.67\% & $\mu$: 4.65 | $\sigma$: 0.49 | Max: 65.96\% & $\mu$: 4.57 | $\sigma$: 0.64 | Max: 61.91\% \\
+gpt-4o-mini & $\mu$: 4.63 | $\sigma$: 0.50 | Max: 63.92\% & $\mu$: 4.37 | $\sigma$: 0.96 | Max: 53.08\% & $\mu$: 4.55 | $\sigma$: 0.55 | Max: 57.67\% & $\mu$: 4.96 | $\sigma$: 0.20 | Max: 95.96\% & $\mu$: 4.71 | $\sigma$: 0.47 | Max: 71.67\% & $\mu$: 4.64 | $\sigma$: 0.62 | Max: 68.46\% \\
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+
+\end{table}
