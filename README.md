@@ -74,31 +74,38 @@ uv run inference/STI_Inference_S3T.py
 
 ```bash
 # Example — adjust flags according to the actual scripts
-uv run inference/STI_Inference_S3T.py --model <MODEL_NAME> --instances <PATH_TO_INSTANCES> --out_dir data/results/sti --mongo_uri "<MONGO_URI>"
+uv run -m inference.STI_Inference_S3T.py --model_name <MODEL_NAME> --instances <PATH_TO_INSTANCES> --batch_size 20
 ```
 
 3) Multi-Task Inference (MTI)
 
 ```bash
-uv run inference/MTI_Inference_S3T.py --model <MODEL_NAME> --instances <PATH_TO_INSTANCES> --out_dir data/results/mti --mongo_uri "<MONGO_URI>"
+uv run -m inference.MTI_Inference_S3T.py --model_name <MODEL_NAME> --instances <PATH_TO_INSTANCES> --batch_size 20
 ```
 
 4) Generate ground truth (GT) with an LLM
 
+When creating the GT for the first time (i.e., selecting the sample of instances that will be used by multiple judges), run the generator with the `--first_experiment` flag and provide `--sample_csv_file <path>` where the script will save a CSV listing the sampled instances. This CSV is used to ensure that the final GT is built from the same instances across multiple judges — in our workflow the final GT is the aggregation of three judges' annotations over the same sample.
+
+Example (full mode, creating the sample CSV — replace values and paths):
+
 ```bash
-uv run ground_truth/generate_gt.py --model <LLM_MODEL_FOR_GT> --instances <PATH_TO_INSTANCES> --out_file data/ground_truth/gt_llm.json --mongo_uri "<MONGO_URI>"
+# Full mode selecting experiments and creating the sample CSV (pass --first_experiment and --sample_csv_file)
+uv run -m inference.ground_truth.generate_gt --sti_experiment_id <STI_EXPERIMENT_ID> --mti_experiment_id <MTI_EXPERIMENT_ID> --evaluator_model <MODEL_NAME> --experiment_gt_name <EXPERIMENT_GT_NAME> --first_experiment --sample_csv_file <CSV_PATH>
 ```
+
+When running for subsequent judges who should annotate the same sample, omit `--first_experiment` and pass the same `--sample_csv_file` so the script uses the identical instance list.
 
 5) Evaluate responses with the LLM Judge (final pipeline)
 
 ```bash
-uv run inference/final_pipeline_llm_judge/llm_judge.py --sti_dir data/results/sti --mti_dir data/results/mti --gt data/ground_truth/gt_llm.json --model <LLM_JUDGE_MODEL> --out_dir data/results/final --mongo_uri "<MONGO_URI>"
+uv run inference/final_pipeline_llm_judge/llm_judge.py --sti_experiment_id <STI_EXPERIMENT_ID> --mti_experiment_id <MTI_EXPERIMENT_ID> --model <LLM_JUDGE_MODEL> --experiment_name <EXPERIMENT_NAME>
 ```
 
-6) Produce final metrics and reports
+<!-- 6) Produce final metrics and reports
 
 ```bash
 uv run final_metrics/final_metrics.py --input_dir data/results/final --out_dir final_metrics/exports
 # or open the notebooks in final_metrics/ for interactive analysis
-```
+``` -->
 ---
