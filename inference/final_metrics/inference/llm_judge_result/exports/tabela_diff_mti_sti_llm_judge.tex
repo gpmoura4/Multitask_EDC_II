@@ -1,0 +1,52 @@
+\begin{table}[htbp]
+\caption{Diferença de Desempenho: MTI vs STI ($\Delta$ = MTI - STI). Valores positivos (verde) indicam superioridade da abordagem MTI. Valores negativos (vermelho) indicam superioridade da abordagem STI.}
+\label{tab:diff_mti_sti_llm_judge}
+\centering
+
+\renewcommand{\arraystretch}{1.45} % aumenta o espaçamento entre linhas
+
+\begin{adjustbox}{max width=\textwidth}
+\begin{tabular}{ccccccc}
+\toprule
+\textbf{Modelo} & \textbf{Coerência} & \textbf{Especificidade} & \textbf{Informatividade} & \textbf{Relevância} & \textbf{Compreensibilidade} & \textbf{Média} \\
+\midrule
+\makecell{llama2:7b} &
+\makecell[c]{\textcolor{green}{+7.00\%} \\ \textcolor{green}{$\Delta\mu$: +0.28} \\ \textcolor{red}{$\Delta\sigma$: -0.05}} &
+\makecell[c]{\textcolor{green}{+5.17\%} \\ \textcolor{green}{$\Delta\mu$: +0.28} \\ \textcolor{red}{$\Delta\sigma$: -0.03}} &
+\makecell[c]{\textcolor{green}{+6.71\%} \\ \textcolor{green}{$\Delta\mu$: +0.27} \\ \textcolor{red}{$\Delta\sigma$: -0.07}} &
+\makecell[c]{\textcolor{green}{+16.46\%} \\ \textcolor{green}{$\Delta\mu$: +0.28} \\ \textcolor{red}{$\Delta\sigma$: -0.16}} &
+\makecell[c]{\textcolor{green}{+10.00\%} \\ \textcolor{green}{$\Delta\mu$: +0.28} \\ \textcolor{red}{$\Delta\sigma$: -0.04}} &
+\makecell[c]{\textcolor{green}{+9.07\%} \\ \textcolor{green}{$\Delta\mu$: +0.27} \\ \textcolor{red}{$\Delta\sigma$: -0.06}} \\
+\midrule
+
+\makecell{gpt-3.5-turbo-0125} &
+\makecell[c]{\textcolor{red}{-1.46\%} \\ \textcolor{red}{$\Delta\mu$: -0.06} \\ \textcolor{green}{$\Delta\sigma$: +0.11}} &
+\makecell[c]{\textcolor{red}{-1.71\%} \\ \textcolor{red}{$\Delta\mu$: -0.12} \\ \textcolor{green}{$\Delta\sigma$: +0.08}} &
+\makecell[c]{\textcolor{red}{-3.33\%} \\ \textcolor{red}{$\Delta\mu$: -0.15} \\ \textcolor{green}{$\Delta\sigma$: +0.15}} &
+\makecell[c]{\textcolor{red}{-4.17\%} \\ \textcolor{red}{$\Delta\mu$: -0.08} \\ \textcolor{green}{$\Delta\sigma$: +0.20}} &
+\makecell[c]{\textcolor{red}{-1.92\%} \\ \textcolor{red}{$\Delta\mu$: -0.06} \\ \textcolor{green}{$\Delta\sigma$: +0.12}} &
+\makecell[c]{\textcolor{red}{-2.52\%} \\ \textcolor{red}{$\Delta\mu$: -0.09} \\ \textcolor{green}{$\Delta\sigma$: +0.12}} \\
+\midrule
+
+\makecell{llama-3.3-70b-versatile} &
+\makecell[c]{\textcolor{green}{+8.00\%} \\ \textcolor{green}{$\Delta\mu$: +0.11} \\ \textcolor{red}{$\Delta\sigma$: -0.05}} &
+\makecell[c]{\textcolor{green}{+6.67\%} \\ \textcolor{green}{$\Delta\mu$: +0.09} \\ \textcolor{black}{$\Delta\sigma$: +0.00}} &
+\makecell[c]{\textcolor{green}{+7.12\%} \\ \textcolor{green}{$\Delta\mu$: +0.09} \\ \textcolor{red}{$\Delta\sigma$: -0.02}} &
+\makecell[c]{\textcolor{green}{+3.83\%} \\ \textcolor{green}{$\Delta\mu$: +0.05} \\ \textcolor{red}{$\Delta\sigma$: -0.13}} &
+\makecell[c]{\textcolor{green}{+8.54\%} \\ \textcolor{green}{$\Delta\mu$: +0.10} \\ \textcolor{red}{$\Delta\sigma$: -0.06}} &
+\makecell[c]{\textcolor{green}{+6.83\%} \\ \textcolor{green}{$\Delta\mu$: +0.08} \\ \textcolor{red}{$\Delta\sigma$: -0.03}} \\
+\midrule
+
+\makecell{gpt-4o-mini} &
+\makecell[c]{\textcolor{green}{+6.21\%} \\ \textcolor{green}{$\Delta\mu$: +0.06} \\ \textcolor{red}{$\Delta\sigma$: -0.02}} &
+\makecell[c]{\textcolor{green}{+4.88\%} \\ \textcolor{green}{$\Delta\mu$: +0.04} \\ \textcolor{green}{$\Delta\sigma$: +0.01}} &
+\makecell[c]{\textcolor{green}{+4.50\%} \\ \textcolor{green}{$\Delta\mu$: +0.04} \\ \textcolor{green}{$\Delta\sigma$: +0.01}} &
+\makecell[c]{\textcolor{red}{-0.50\%} \\ \textcolor{black}{$\Delta\mu$: +0.00} \\ \textcolor{green}{$\Delta\sigma$: +0.01}} &
+\makecell[c]{\textcolor{green}{+6.46\%} \\ \textcolor{green}{$\Delta\mu$: +0.07} \\ \textcolor{red}{$\Delta\sigma$: -0.03}} &
+\makecell[c]{\textcolor{green}{+4.31\%} \\ \textcolor{green}{$\Delta\mu$: +0.04} \\ \textcolor{black}{$\Delta\sigma$: +0.00}} \\
+\bottomrule
+
+\end{tabular}
+\end{adjustbox}
+
+\end{table}
