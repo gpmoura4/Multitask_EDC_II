@@ -94,29 +94,18 @@ def finalize_experiment(experiment_id):
 
 
 def create_or_update_answer_document(experiment_id, task_id, instance_id, stage_name, prompt, llm_answer, generation_time, consumed_tokens):
-    """
-    Cria ou atualiza um documento de resposta na collection answer_results.
-    Se o documento já existe (baseado em experiment_id e instance_id), atualiza adicionando a nova stage.
-    Caso contrário, cria um novo documento.
-    """
-    # Buscar documento existente
     existing_doc = answer_collection.find_one({
         "experiment_id": experiment_id,
         "instance_id": instance_id
     })
     
     if existing_doc:
-        # Documento existe - fazer update adicionando a nova stage
         update_data = {
             f"llm_answer.{stage_name}": llm_answer,
             f"generation_time": existing_doc.get("generation_time", 0) + generation_time,
             "prompt": prompt 
         }
-        # f"generation_time": existing_doc.get("generation_time", 0) + generation_time
-        # f"generation_time": existing_doc.get("generation_tim-e", 0) + generation_time,
-        # "prompt": prompt 
 
-        # Atualizar consumed_tokens se houver
         if consumed_tokens is not None:
             update_data["consumed_tokens"] = existing_doc.get("consumed_tokens", 0) + consumed_tokens
         
@@ -126,7 +115,6 @@ def create_or_update_answer_document(experiment_id, task_id, instance_id, stage_
         )
         return existing_doc["_id"]
     else:
-        # Documento não existe - criar novo
         doc = {
             "experiment_id": experiment_id,
             "task_id": task_id,
@@ -141,9 +129,6 @@ def create_or_update_answer_document(experiment_id, task_id, instance_id, stage_
 
 
 def check_instance_processed(experiment_id, instance_id, stage_name):
-    """
-    Verifica se uma instância específica já foi processada para uma determinada stage.
-    """
     doc = answer_collection.find_one({
         "experiment_id": experiment_id,
         "instance_id": instance_id
@@ -163,14 +148,10 @@ def create_experiment_record(
     llm_params: dict,
     id: str | None = None,
 ):
-    """
-    Cria o documento inicial do experimento.
-    """
 
-    # Se 'id' foi fornecido, tentar buscar experimento existente
     if id is not None:
         try:
-            object_id = ObjectId(id)   # converte string → ObjectId
+            object_id = ObjectId(id)  
             existing_doc = collection.find_one({"_id": object_id})
         except Exception:
             print(f"ID '{id}' não é um ObjectId válido. Criando novo experimento.")
@@ -239,7 +220,6 @@ CoT = pd.read_excel("data/cot_breakdown.xlsx")
 def generate_missing_instances(stage_name, k_output_dir, k, input_builder_fn, experiment_id):
     csv_path = os.path.join(k_output_dir, f"free-form-{args.model_name}-STI-{k}-{stage_name}.csv")
 
-    # Ler progresso existente do CSV
     done_uids = set()
     if os.path.exists(csv_path):
         existing_df = pd.read_csv(csv_path)
@@ -248,21 +228,18 @@ def generate_missing_instances(stage_name, k_output_dir, k, input_builder_fn, ex
     else:
         existing_df = pd.DataFrame(columns=["uid", "generation", "generation_time"])
     
-    # Verificar também no MongoDB quais instâncias já foram processadas nesta stage
     mongo_done_uids = set()
     for uid in data[k]["instance"].keys():
         if check_instance_processed(experiment_id, str(uid), stage_name):
             mongo_done_uids.add(str(uid))
     
-    # Combinar ambos os conjuntos
     done_uids = done_uids.union(mongo_done_uids)
     if mongo_done_uids:
         print(f"⚙️  {stage_name}: {len(mongo_done_uids)} instâncias já processadas para {k} (MongoDB).")
 
-    # Filtrar instâncias pendentes
     pending = [(uid, instance) for uid, instance in data[k]["instance"].items() if str(uid) not in done_uids]
     
-    # Se estiver em modo de teste e test_num_instances for especificado, limitar o número de instâncias
+
     if args.is_test and args.test_num_instances is not None:
         pending = pending[:args.test_num_instances]
         print(f" MODO TESTE: Limitando a {args.test_num_instances} instâncias")
@@ -296,7 +273,6 @@ def generate_missing_instances(stage_name, k_output_dir, k, input_builder_fn, ex
             if not inputs:
                 continue
 
-            # Gerar respostas
             generation_time, generated_texts = generate_completions(
                 model,
                 tokenizer,
@@ -312,16 +288,14 @@ def generate_missing_instances(stage_name, k_output_dir, k, input_builder_fn, ex
                 top_p=1.0
             )
 
-            # Salvar cada resposta no MongoDB
+
             for idx, (uid, instance, gen_text, gen_time) in enumerate(zip(valid_uids, valid_instances, generated_texts, generation_time)):
                 # Reconstruir o prompt para salvar no MongoDB
                 prompt = input_builder_fn(uid, instance)
                 # Calcular tokens consumidos (aproximação baseada no texto gerado)
-                # Nota: Para precisão, seria necessário usar o tokenizer
                 consumed_tokens = len(gen_text.split())  # Aproximação simples
                 
                 try:
-                    # Salvar/atualizar no MongoDB
                     create_or_update_answer_document(
                         experiment_id=experiment_id,
                         task_id=str(k),
@@ -334,9 +308,7 @@ def generate_missing_instances(stage_name, k_output_dir, k, input_builder_fn, ex
                     )
                 except Exception as mongo_error:
                     print(f"⚠️  Erro ao salvar no MongoDB para {uid}: {mongo_error}")
-                    # Continuar processamento mesmo com erro do MongoDB
 
-            # Salvar também no CSV (backup)
             batch_df = pd.DataFrame({
                 "uid": valid_uids,
                 "generation": generated_texts,
@@ -346,7 +318,6 @@ def generate_missing_instances(stage_name, k_output_dir, k, input_builder_fn, ex
             all_new.append(batch_df)
             uids_done.extend(valid_uids)
 
-            # Salvar incrementalmente a cada N gerações
             if len(all_new) * args.batch_size >= args.save_every or i + args.batch_size >= len(pending):
                 new_df = pd.concat(all_new, ignore_index=True)
                 final_df = pd.concat([existing_df, new_df], ignore_index=True)
@@ -362,15 +333,12 @@ def generate_missing_instances(stage_name, k_output_dir, k, input_builder_fn, ex
 
     except Exception as e:
         print(f"Erro durante {stage_name} para {k}: {e}")
-        # Salvar checkpoint de erro
         save_error_checkpoint(experiment_id, str(k), stage_name, str(e))
         torch.cuda.empty_cache()
         return None
 
 
-print("starting evaluation")
-
-
+# Alterar conforme necessidade para futuros experimentos
 experiment_id = create_experiment_record(
     inference_type="STI",
     experiment_name="STI_ gpt-3.5-turbo-0125_Experiment_1120",
@@ -392,18 +360,11 @@ experiment_id = create_experiment_record(
     id="691f6c99d40086eaa5c7a322"
 )
 
-# -------------------------------
-# Loop principal
-# -------------------------------
 
-# Determinar quais tasks processar baseado no modo de teste
 if args.is_test:
-    # Modo teste: processar task específica ou primeira disponível
     if args.test_task_id:
-        # Verificar se a task existe
         if args.test_task_id in data:
             tasks_to_process = [(args.test_task_id, data[args.test_task_id])]
-            print(f"\n MODO DE TESTE ATIVADO")
             print(f"Task selecionada: {args.test_task_id}")
         else:
             available_tasks = list(data.keys())[:5]  # Mostrar primeiras 5 tasks
@@ -435,25 +396,6 @@ for k, v in tasks_to_process:
 
     _, s1, s2, s3 = CoT[CoT["tuid"] == int(k)].values[0]
     cot = data[k]["sample"]
-
-    """ 
-    cot value:
-        ### Example:
-
-        \n\n### Instruction: 
-        Read the following passage, and follow the given steps.
-        \n#1: Read through the given text and translate it to German.
-        \n#2: Summarize the text you have translated it step#1.
-
-        \n\n###Text\n Add two small curved lines that form a pointed angle to the right side of the head for the beak.   Draw the snood and the caruncles of the neck using curved strokes. Note that the back portion of the turkey is a little bumpy so you can sketch out a few outlines of the feathers too.    
-
-        \n\n###Answer:
-
-        \n\n###Instruction1:
-
-        \n Zeichne zwei kleine gebogene Linien, die einen spitzen Winkel zur rechten Seite des Kopfes bilden, als Schnabel.   Zeichne den Schnabel und die Karbunkel am Hals aus gebogenen Linien. Beachte, dass der hintere Teil des Truthahns ein wenig rundlich ist, e Struktur als Schwanz an der gebogenen Linie. Zeichne die Augen und definiere den Schnabel. Zeichne den Körper und beachte die Federmuster. Färbe die fächerartige Form des Truthahnschwanzes dunkel. Skizziere und definiere Beine und Krallen. Zeichne zufällige kleine Striche auf dem Körper des Truthahns, damit er federig wirkt. Radiere unnötige Linien weg und verfeinere die Federn mit kleinen, gebogenen Linien. Male die Zeichnung an.\n
-    
-    """
 
     # ---------- Etapa 1 ----------
     def build_input_s1(uid, instance):
