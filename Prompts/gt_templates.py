@@ -258,5 +258,6 @@ explanations_b = {{...}}
 {answer_b}
 """
 
-# Template ativo usado no código
-GT_EVALUATION_TEMPLATE = GT_EVALUATION_TEMPLATE_V3
+# Backwards-compatible alias expected by existing code
+# Default to V2 (more explicit Likert scales) but keep both versions available.
+GT_EVALUATION_TEMPLATE = GT_EVALUATION_TEMPLATE_V2

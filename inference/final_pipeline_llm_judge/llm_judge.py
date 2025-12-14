@@ -27,7 +27,7 @@ from pathlib import Path
 sys.path.append(str(Path(__file__).parent.parent.parent))
 
 from evaluate.utils import load_hf_lm_and_tokenizer, generate_completions
-from llm_judge_templates import LLM_JUDGE_EVALUATION_TEMPLATE
+from Prompts.llm_judge_templates import LLM_JUDGE_EVALUATION_TEMPLATE
 
 load_dotenv()
 

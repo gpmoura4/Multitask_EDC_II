@@ -1,5 +1,0 @@
-experiment_id: 691cd74b6d7fae4819e7b5b7
-task_id: 034
-stage: s1
-error: Error code: 429 - {'error': {'message': 'You exceeded your current quota, please check your plan and billing details. For more information on this error, read the docs: https://platform.openai.com/docs/guides/error-codes/api-errors.', 'type': 'insufficient_quota', 'param': None, 'code': 'insufficient_quota'}}
-timestamp: 2025-11-18T17:30:43.197207
