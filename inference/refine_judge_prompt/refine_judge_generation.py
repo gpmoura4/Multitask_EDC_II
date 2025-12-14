@@ -13,7 +13,7 @@ import csv
 from pathlib import Path
 
 from evaluate.utils import load_hf_lm_and_tokenizer, generate_completions
-from refine_judge_prompt_templates import GT_EVALUATION_TEMPLATE
+from Prompts.refine_judge_prompt_templates import GT_EVALUATION_TEMPLATE
 
 # Conexão MongoDB
 MONGO_URI = os.getenv("MONGODB_URI")
