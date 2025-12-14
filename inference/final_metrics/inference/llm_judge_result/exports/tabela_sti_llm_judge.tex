@@ -1,0 +1,19 @@
+\begin{table}[htbp]
+\caption{Resultados Detalhados da Abordagem STI - Métricas LLM Judge por Modelo}
+\label{tab:sti_llm_judge}
+\centering
+
+\begin{adjustbox}{max width=\textwidth}
+\begin{tabular}{lcccccc}
+\toprule
+Modelo & Coerência & Especificidade & Informatividade & Relevância & Compreensibilidade & Média \\
+\midrule
+llama2:7b & $\mu$: 3.56 | $\sigma$: 0.76 | Max: 7.92\% & $\mu$: 3.31 | $\sigma$: 0.98 | Max: 6.67\% & $\mu$: 3.55 | $\sigma$: 0.85 | Max: 10.58\% & $\mu$: 4.28 | $\sigma$: 0.90 | Max: 51.33\% & $\mu$: 3.68 | $\sigma$: 0.82 | Max: 15.04\% & $\mu$: 3.68 | $\sigma$: 0.92 | Max: 18.31\% \\
+gpt-3.5-turbo-0125 & $\mu$: 4.40 | $\sigma$: 0.63 | Max: 47.33\% & $\mu$: 4.08 | $\sigma$: 1.07 | Max: 37.50\% & $\mu$: 4.29 | $\sigma$: 0.74 | Max: 42.71\% & $\mu$: 4.87 | $\sigma$: 0.40 | Max: 89.12\% & $\mu$: 4.53 | $\sigma$: 0.59 | Max: 57.42\% & $\mu$: 4.43 | $\sigma$: 0.77 | Max: 54.82\% \\
+llama-3.3-70b-versatile & $\mu$: 4.41 | $\sigma$: 0.58 | Max: 45.88\% & $\mu$: 4.19 | $\sigma$: 0.94 | Max: 37.83\% & $\mu$: 4.37 | $\sigma$: 0.59 | Max: 42.42\% & $\mu$: 4.91 | $\sigma$: 0.34 | Max: 91.83\% & $\mu$: 4.55 | $\sigma$: 0.55 | Max: 57.42\% & $\mu$: 4.49 | $\sigma$: 0.67 | Max: 55.07\% \\
+gpt-4o-mini & $\mu$: 4.57 | $\sigma$: 0.52 | Max: 57.71\% & $\mu$: 4.33 | $\sigma$: 0.95 | Max: 48.21\% & $\mu$: 4.51 | $\sigma$: 0.54 | Max: 53.17\% & $\mu$: 4.96 | $\sigma$: 0.19 | Max: 96.46\% & $\mu$: 4.64 | $\sigma$: 0.50 | Max: 65.21\% & $\mu$: 4.60 | $\sigma$: 0.62 | Max: 64.15\% \\
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+
+\end{table}
